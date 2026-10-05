@@ -1,0 +1,20 @@
+{
+  "name": "wow-forever-discord-bot",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^7"
+  },
+  "dependencies": {
+    "chrono-node": "^2.10.2",
+    "discord.js": "^14.27.0"
+  },
+  "scripts": {
+    "start": "bun src/index.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  }
+}
