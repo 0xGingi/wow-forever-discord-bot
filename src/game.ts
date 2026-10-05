@@ -4,6 +4,16 @@ export const LAUNCH = Date.parse("2026-11-04T23:00:00Z"); // 3pm PST
 export const BETA_END = Date.parse("2026-10-21T23:00:00Z");
 export const RAIDS_OPEN = Date.parse("2026-12-09T23:00:00Z");
 
+// ponytail: Blizzard hasn't published Forever's name lengths, so allow 2-24 letters per part rather than reject real names.
+const NAME_PART = /^\p{L}{2,24}$/u;
+const cap = (s: string) => s[0]!.toUpperCase() + s.slice(1).toLowerCase();
+
+/** Forever names are "First Second" (both required, unique together). Returns the display form, or null if invalid. */
+export function formatCharName(first: string, second: string): string | null {
+  const parts = [first.trim(), second.trim()];
+  return parts.every((p) => NAME_PART.test(p)) ? parts.map(cap).join(" ") : null;
+}
+
 export const CLASSES = {
   Warrior: 0xc69b6d,
   Paladin: 0xf48cba,

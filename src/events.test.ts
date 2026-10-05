@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { isFull, slotBlocked, toPromote } from "./events.ts";
+import { formatCharName } from "./game.ts";
 import type { Signup } from "./db.ts";
 
 const s = (user_id: string, role: string, status: Signup["status"] = "in"): Signup => ({ event_id: 1, user_id, status, role, char_name: user_id });
@@ -27,4 +28,14 @@ test("bench promotes oldest first, only into open spots", () => {
   expect(toPromote({ size: 5 }, signups).map((x) => x.user_id)).toEqual(["b", "d"]);
   expect(toPromote({ size: 1 }, signups)).toEqual([]);
   expect(toPromote({ size: null }, signups)).toEqual([]);
+});
+
+test("Forever names are first + second, capitalized, letters only", () => {
+  expect(formatCharName("asha", "BRIGHTVALE")).toBe("Asha Brightvale");
+  expect(formatCharName(" Thalen ", "Brightvale")).toBe("Thalen Brightvale");
+  expect(formatCharName("Zoë", "Ælfwine")).toBe("Zoë Ælfwine"); // accented letters are fine
+  expect(formatCharName("Averyveryverylongfirstname", "Brightvale")).toBeNull(); // 26 letters
+  expect(formatCharName("Asha", "")).toBeNull();
+  expect(formatCharName("Asha", "Bright vale")).toBeNull();
+  expect(formatCharName("A5ha", "Brightvale")).toBeNull();
 });

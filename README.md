@@ -8,7 +8,7 @@ Discord bot for **uwucrew**, a World of Warcraft: Forever guild.
 
 | Command | What it does |
 |---|---|
-| `/char add/remove/main/prof/list` | Register characters (class, race, role, level, main/alt, professions) |
+| `/char add/remove/main/prof/list` | Register characters by Forever's first + last name (e.g. *Asha Brightvale*), with class, race, role, level, main/alt and professions |
 | `/ding` | Update a character's level and announce it (with a special shout for the first to hit 60) |
 | `/leaderboard` | Race to 60: highest levels, ties broken by who got there first |
 | `/roster [class] [alts]` | Guild roster grouped by class, with role counts |

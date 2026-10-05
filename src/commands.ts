@@ -7,7 +7,7 @@ import { db, eventSignups, getChar, getEvent, getTz, setTz, upcomingEvents, user
 import { isFull, postEvent, refreshEventMessage, renderEvent, slotBlocked, toPromote } from "./events.ts";
 import { fmtTime, parseWhen, whenChoices, ZONES, zoneChoices } from "./time.ts";
 import { syncGroup } from "./groups.ts";
-import { BETA_END, CLASSES, DUNGEONS, findInstance, instanceLabel, LAUNCH, PROFESSIONS, RACES, RAIDS, RAIDS_OPEN, ROLES, type ClassName, type Role } from "./game.ts";
+import { BETA_END, formatCharName, CLASSES, DUNGEONS, findInstance, instanceLabel, LAUNCH, PROFESSIONS, RACES, RAIDS, RAIDS_OPEN, ROLES, type ClassName, type Role } from "./game.ts";
 import { bar, clip, COLOR, e, emojiId, icon, notice } from "./ui.ts";
 
 const OFFICER_CHANNEL_ID = process.env.OFFICER_CHANNEL_ID;
@@ -29,7 +29,8 @@ const charName = (o: any, desc = "Character name") => o.setName("name").setDescr
 export const definitions = [
   new SlashCommandBuilder().setName("char").setDescription("Manage your characters")
     .addSubcommand((s) => s.setName("add").setDescription("Register a character")
-      .addStringOption((o) => o.setName("name").setDescription("Character name").setRequired(true).setMinLength(2).setMaxLength(12))
+      .addStringOption((o) => o.setName("first_name").setDescription("First name, e.g. Asha").setRequired(true).setMinLength(2).setMaxLength(24))
+      .addStringOption((o) => o.setName("last_name").setDescription("Second name, e.g. Brightvale").setRequired(true).setMinLength(2).setMaxLength(24))
       .addStringOption((o) => o.setName("class").setDescription("Class").setRequired(true).addChoices(...choices(Object.keys(CLASSES))))
       .addStringOption((o) => o.setName("race").setDescription("Race").setRequired(true).addChoices(...choices(RACES)))
       .addStringOption((o) => o.setName("role").setDescription("Main role").setRequired(true).addChoices(...choices(ROLES)))
@@ -127,9 +128,8 @@ async function char(i: Cmd) {
   }
 
   if (sub === "add") {
-    const raw = i.options.getString("name", true);
-    if (!/^\p{L}{2,12}$/u.test(raw)) return i.reply(notice("err", "Character names are 2–12 letters."));
-    const name = raw[0]!.toUpperCase() + raw.slice(1).toLowerCase();
+    const name = formatCharName(i.options.getString("first_name", true), i.options.getString("last_name", true));
+    if (!name) return i.reply(notice("err", "First and last names are 2–24 letters each, no spaces or symbols."));
     const existing = getChar(name);
     if (existing) return i.reply(notice("err", `**${existing.name}** is already registered to <@${existing.user_id}>.`));
     const main = i.options.getBoolean("main") ?? userChars(i.user.id).length === 0;
@@ -359,7 +359,7 @@ async function apply(i: Cmd) {
       new TextInputBuilder().setCustomId(id).setLabel(label).setStyle(style).setRequired(required).setMaxLength(style === TextInputStyle.Short ? 100 : 1000),
     );
   return i.showModal(new ModalBuilder().setCustomId("apply").setTitle("Apply to uwucrew").addComponents(
-    input("char", "Character name"),
+    input("char", "Character name (first and last)"),
     input("class", "Race / class / spec"),
     input("level", "Current level"),
     input("exp", "WoW experience (classic, raids, etc.)", TextInputStyle.Paragraph),
