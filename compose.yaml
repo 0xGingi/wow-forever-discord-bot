@@ -8,5 +8,18 @@ services:
     volumes:
       - data:/data
     restart: unless-stopped
+
+  # Public HTTPS for the uwucrew-sync app, via a Cloudflare Tunnel: no open ports on this machine.
+  # Enable with COMPOSE_PROFILES=tunnel and CLOUDFLARE_TUNNEL_TOKEN in .env. In the Cloudflare dashboard,
+  # point the tunnel's public hostname at http://bot:8787, then set SYNC_PUBLIC_URL to that hostname.
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on: [bot]
+    restart: unless-stopped
+    profiles: [tunnel]
+
 volumes:
   data:

@@ -56,6 +56,15 @@ create table if not exists reserves (
   item text not null,
   primary key (event_id, user_id)
 );
+create table if not exists synced (
+  char_id integer primary key references chars(id) on delete cascade,
+  data text not null,             -- latest uwucrew Sync addon snapshot (JSON)
+  synced_at integer not null
+);
+create table if not exists sync_tokens (
+  user_id text primary key,
+  hash text not null unique       -- sha256 of the companion app's token; the token itself is never stored
+);
 create table if not exists loot (
   id integer primary key,
   char_name text not null,

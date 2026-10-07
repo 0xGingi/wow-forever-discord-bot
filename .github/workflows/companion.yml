@@ -1,0 +1,73 @@
+name: Companion app
+
+on:
+  push:
+    paths: ["companion/**", "src/savedvars.ts", "package.json", "bun.lock", ".github/workflows/companion.yml"]
+  pull_request:
+    paths: ["companion/**", "src/savedvars.ts", "package.json", "bun.lock", ".github/workflows/companion.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write # publish to the rolling "latest" release
+
+jobs:
+  build:
+    # Each OS builds and smoke-tests its own binary, so we know it actually runs there.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+          - os: macos-latest # Apple Silicon runner; also cross-builds Intel
+          - os: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          bun build companion/uwucrew-sync.ts --compile --minify --outfile dist/uwucrew-sync-windows.exe
+          bun companion/smoke.ts dist/uwucrew-sync-windows.exe
+          echo "ASSETS=dist/uwucrew-sync-windows.exe" >> "$GITHUB_ENV"
+
+      - name: Build (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          bun build companion/uwucrew-sync.ts --compile --minify --target=bun-darwin-arm64 --outfile dist/uwucrew-sync
+          bun build companion/uwucrew-sync.ts --compile --minify --target=bun-darwin-x64 --outfile dist/intel/uwucrew-sync
+          # Apple Silicon won't run unsigned code; an ad-hoc signature is enough to launch.
+          codesign --force --sign - dist/uwucrew-sync dist/intel/uwucrew-sync
+          bun companion/smoke.ts dist/uwucrew-sync
+          # Zipped so the executable bit survives the browser download.
+          (cd dist && zip -q uwucrew-sync-mac-apple-silicon.zip uwucrew-sync)
+          (cd dist/intel && zip -q ../uwucrew-sync-mac-intel.zip uwucrew-sync)
+          echo "ASSETS=dist/uwucrew-sync-mac-apple-silicon.zip dist/uwucrew-sync-mac-intel.zip" >> "$GITHUB_ENV"
+
+      - name: Build (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          bun build companion/uwucrew-sync.ts --compile --minify --outfile dist/uwucrew-sync
+          bun companion/smoke.ts dist/uwucrew-sync
+          (cd dist && zip -q uwucrew-sync-linux.zip uwucrew-sync)
+          echo "ASSETS=dist/uwucrew-sync-linux.zip" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: uwucrew-sync-${{ runner.os }}
+          path: dist/*uwucrew-sync-*
+      - name: Publish to the "latest" release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view latest >/dev/null 2>&1 || gh release create latest --title "Latest build" --notes-file .github/release-notes.md || true
+          # shellcheck disable=SC2086 # $ASSETS is a list of files
+          gh release upload latest $ASSETS --clobber

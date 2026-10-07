@@ -9,6 +9,9 @@ import { fmtTime, parseWhen, whenChoices, ZONES, zoneChoices } from "./time.ts";
 import { syncGroup } from "./groups.ts";
 import { BETA_END, formatCharName, CLASSES, DUNGEONS, findInstance, instanceLabel, LAUNCH, PROFESSIONS, RACES, RAIDS, RAIDS_OPEN, ROLES, type ClassName, type Role } from "./game.ts";
 import { bar, clip, COLOR, e, emojiId, icon, notice } from "./ui.ts";
+import { cmd, definition as helpDefinition, help } from "./help.ts";
+import { announceLevelUp, isFirstTo60, levelUpEmbed, PROGRESS_CHANNEL_ID } from "./progress.ts";
+import { profileEmbed, sync, definition as syncDefinition } from "./sync.ts";
 
 const OFFICER_CHANNEL_ID = process.env.OFFICER_CHANNEL_ID;
 const MEMBER_ROLE_ID = process.env.MEMBER_ROLE_ID;
@@ -42,6 +45,8 @@ export const definitions = [
       .addStringOption((o) => charName(o))
       .addStringOption((o) => o.setName("profession").setDescription("Profession").setRequired(true).addChoices(...choices(PROFESSIONS)))
       .addIntegerOption((o) => o.setName("skill").setDescription("Skill level").setRequired(true).setMinValue(0).setMaxValue(500)))
+    .addSubcommand((s) => s.setName("view").setDescription("Full profile: gear, professions, lockouts, reputation (synced from the game)")
+      .addStringOption((o) => charName(o)))
     .addSubcommand((s) => s.setName("list").setDescription("Show someone's characters")
       .addUserOption((o) => o.setName("user").setDescription("Defaults to you"))),
 
@@ -98,6 +103,8 @@ export const definitions = [
   new SlashCommandBuilder().setName("timezone").setDescription("Set your timezone so times you type are read correctly")
     .addStringOption((o) => o.setName("zone").setDescription("Search a city or your current time, e.g. 'new york' or '8:15 pm'").setAutocomplete(true)),
   new SlashCommandBuilder().setName("forever").setDescription("WoW Forever dates, dungeons and raids"),
+  helpDefinition,
+  syncDefinition,
 ].map((c) => c.toJSON());
 
 // ---------- slash command handlers ----------
@@ -143,6 +150,11 @@ async function char(i: Cmd) {
     return i.reply(notice("ok", `Registered ${fmtChar(getChar(name)!)}${main ? " as your main" : ""}.`));
   }
 
+  if (sub === "view") {
+    const c = getChar(i.options.getString("name", true));
+    return i.reply(c ? { embeds: [profileEmbed(c)] } : notice("err", "No character with that name. Pick one from the list."));
+  }
+
   const c = getChar(i.options.getString("name", true));
   if (!c || (c.user_id !== i.user.id && !isOfficer(i))) return i.reply(notice("err", "That's not one of your characters."));
 
@@ -170,22 +182,12 @@ async function ding(i: Cmd) {
   const c = getChar(i.options.getString("name", true));
   if (!c || c.user_id !== i.user.id) return i.reply(notice("err", "That's not one of your characters."));
   const level = i.options.getInteger("level", true);
-  const first60 = level === 60 && c.level < 60 && !db.query("select 1 from chars where level = 60").get();
+  const first60 = isFirstTo60(level, c.level);
   db.run("update chars set level = ?, level_at = unixepoch() where id = ?", [level, c.id]);
-  const { rank } = db.query<{ rank: number }, [number, number]>(
-    "select count(*) + 1 rank from chars where level > ? or (level = ? and level_at < unixepoch())",
-  ).get(level, level)!;
-  let [headline, body, thumb] = [`Ding! Level ${level}`, `**${c.name}** the ${c.race} ${c.class} is now level **${level}**.\n${bar(level / 60, 12)} \`${level}/60\``, "ding"];
-  if (level === 60) [headline, body, thumb] = ["Level 60!", `**${c.name}** the ${c.race} ${c.class} hit max level. Welcome to endgame, the raid team awaits uwu`, "level60"];
-  if (first60) [headline, body, thumb] = ["First to 60!", `**${c.name}** the ${c.race} ${c.class} is the **first in uwucrew** to hit max level. All hail ${i.user}!`, "crown"];
-  return i.reply({
-    embeds: [new EmbedBuilder()
-      .setAuthor({ name: c.name, iconURL: icon(c.class) ?? undefined })
-      .setColor(level === 60 ? COLOR.legendary : classColor(c.class))
-      .setThumbnail(icon(thumb))
-      .setDescription(`## ${headline}\n${body}`)
-      .setFooter({ text: `#${rank} in the race to 60 · /leaderboard` })],
-  });
+  const embed = levelUpEmbed(c, level, `${i.user}`, first60);
+  if (!PROGRESS_CHANNEL_ID || PROGRESS_CHANNEL_ID === i.channelId) return i.reply({ embeds: [embed] });
+  const posted = await announceLevelUp(i.client, embed);
+  return i.reply(posted ? notice("ok", `Level ${level} saved and announced in <#${posted}>.`) : { embeds: [embed] });
 }
 
 async function leaderboard(i: Cmd) {
@@ -388,6 +390,7 @@ async function rolepanel(i: Cmd) {
       .setDescription([
         MEMBER_ROLE_ID && `${e("tabard")} **Join uwucrew** to get the member role and unlock the server.`,
         `${e("note")} Then pick the roles you play. Click again to remove one, and raid leaders can ping them.`,
+        `${e("hearth")} New here? ${cmd("help")} shows how everything works.`,
       ].filter(Boolean).join("\n\n"))
       .addFields(ROLES.map((r) => ({ name: `${e(r)} ${r}`, value: ROLE_BLURB[r], inline: true })))],
     components: rows,
@@ -404,7 +407,7 @@ export async function roleButton(i: ButtonInteraction, which: string) {
   const ok = await (has ? member.roles.remove(role) : member.roles.add(role)).then(() => true, () => false);
   if (!ok) return i.reply(notice("err", `I can't manage ${role}. An admin needs to drag my role above it in Server Settings → Roles.`));
   return i.reply(which === "member"
-    ? notice("ok", "Welcome to **uwucrew**! Register your characters with `/char add`.")
+    ? notice("ok", `Welcome to **uwucrew**! Register your characters with ${cmd("char add")}, and see ${cmd("help")} for everything else.`)
     : notice("ok", `${has ? "Removed" : "Added"} ${e(which)} ${role}.`));
 }
 
@@ -437,7 +440,7 @@ async function forever(i: Cmd) {
   });
 }
 
-export const commands: Record<string, (i: Cmd) => Promise<unknown>> = { char, ding, leaderboard, roster, crafters, event, lfg, sr, loot, attendance, apply, rolepanel, timezone, forever };
+export const commands: Record<string, (i: Cmd) => Promise<unknown>> = { char, ding, leaderboard, roster, crafters, event, lfg, sr, loot, attendance, apply, rolepanel, timezone, forever, help, sync };
 
 // ---------- autocomplete ----------
 
@@ -453,7 +456,7 @@ export async function autocomplete(i: AutocompleteInteraction) {
   if (f.name === "dungeon") return match(DUNGEONS.map((d) => ({ name: instanceLabel(d), value: d.name })));
   if (f.name === "title") return match([...RAIDS, ...DUNGEONS].map((x) => ({ name: instanceLabel(x).slice(0, 100), value: x.name })));
   if (f.name === "name") {
-    const all = i.commandName === "loot" || isOfficer(i);
+    const all = i.commandName === "loot" || i.options.getSubcommand(false) === "view" || isOfficer(i);
     const chars = all ? db.query<Char, []>("select * from chars order by name").all() : userChars(i.user.id);
     return match(chars.map((c) => ({ name: `${c.name} (${c.level} ${c.class})`, value: c.name })));
   }

@@ -8,4 +8,5 @@ COPY assets/emoji ./assets/emoji
 RUN mkdir /data && chown bun:bun /data
 USER bun
 ENV DB_PATH=/data/uwucrew.sqlite
+EXPOSE 8787
 CMD ["bun", "src/index.ts"]

@@ -14,7 +14,9 @@
   },
   "scripts": {
     "start": "bun src/index.ts",
-    "test": "bun test",
-    "typecheck": "tsc --noEmit"
+    "test": "DB_PATH=:memory: bun test",
+    "typecheck": "tsc --noEmit",
+    "build:companion": "bun build companion/uwucrew-sync.ts --compile --minify --target=bun-windows-x64 --outfile dist/uwucrew-sync-windows.exe && bun build companion/uwucrew-sync.ts --compile --minify --target=bun-darwin-arm64 --outfile dist/uwucrew-sync-mac-apple-silicon && bun build companion/uwucrew-sync.ts --compile --minify --target=bun-darwin-x64 --outfile dist/uwucrew-sync-mac-intel && bun build companion/uwucrew-sync.ts --compile --minify --target=bun-linux-x64 --outfile dist/uwucrew-sync-linux",
+    "build:addon": "mkdir -p dist && cd addon && rm -f ../dist/UwucrewSync.zip && zip -qr ../dist/UwucrewSync.zip UwucrewSync"
   }
 }
