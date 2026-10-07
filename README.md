@@ -1,5 +1,3 @@
-<img src="assets/icon.svg" width="64" height="64" alt="">
-
 # uwucrew bot
 
 Discord bot for **uwucrew**, a World of Warcraft: Forever guild.
