@@ -21,6 +21,10 @@ export type Snapshot = {
   profs: { n: string; r: number; m: number }[];
   lockouts: { n: string; raid: boolean; k: number; of: number; reset: number }[];
   reps: { n: string; r: number; p: number; m: number }[];
+  /** Current quest log (addon 1.1+). Objectives may be empty in paste codes, which trim them to fit. */
+  log?: { id: number; n: string; l?: number; z?: string; c: boolean; o: { t: string; d: boolean }[] }[];
+  /** Quests left out of a paste code to make it fit. */
+  logMore?: number;
 };
 
 // ---------- parsing (trust boundary: anyone can paste anything) ----------
@@ -47,7 +51,10 @@ export function parseExport(text: string): { snap: Snapshot } | { error: string 
     list(d.gear, 19, (g) => isNum(g?.s, 1, 19) && isNum(g?.id, 1) && opt(g?.n, (v) => isStr(v)) && opt(g?.q, (v) => isNum(v, 0, 9)) && opt(g?.l, (v) => isNum(v, 0, 1000))) &&
     list(d.profs, 15, (p) => isStr(p?.n, 40) && isNum(p?.r, 0, 1000) && isNum(p?.m, 0, 1000)) &&
     list(d.lockouts, 50, (l) => isStr(l?.n) && typeof l?.raid === "boolean" && isNum(l?.k, 0, 100) && isNum(l?.of, 0, 100) && isNum(l?.reset)) &&
-    list(d.reps, 20, (r) => isStr(r?.n) && isNum(r?.r, 1, 8) && isNum(r?.p, 0, 1e6) && isNum(r?.m, 0, 1e6));
+    list(d.reps, 20, (r) => isStr(r?.n) && isNum(r?.r, 1, 8) && isNum(r?.p, 0, 1e6) && isNum(r?.m, 0, 1e6)) &&
+    opt(d.logMore, (v) => isNum(v, 0, 60)) &&
+    opt(d.log, (v) => list(v, 60, (q) => isNum(q?.id, 1) && isStr(q?.n, 150) && opt(q?.l, (x) => isNum(x, 0, 100)) && opt(q?.z, (x) => isStr(x)) &&
+      typeof q?.c === "boolean" && list(q?.o, 12, (o) => isStr(o?.t, 200) && typeof o?.d === "boolean")));
   if (!valid) return { error: "That sync code doesn't look right. Make sure the uwucrew Sync addon is up to date, then try again." };
   return { snap: d as Snapshot };
 }
@@ -218,6 +225,7 @@ export function profileEmbed(c: Char) {
     d.money !== undefined && `**Gold** ${money(d.money)}`,
     d.played !== undefined && `**Played** ${played(d.played)}`,
     d.quests !== undefined && `**Quests done** \`${d.quests}\``,
+    d.log && `**Quest log** \`${d.log.length}\` active · /quests`,
   ].filter(Boolean);
   if (stats.length) embed.addFields({ name: "Stats", value: stats.join("\n") });
 

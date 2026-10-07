@@ -8,6 +8,7 @@ Discord bot for **uwucrew**, a World of Warcraft: Forever guild.
 |---|---|
 | `/help [post]` | In-Discord guide: quick start plus topic pages (characters, raids, LFG, loot, timezones, officer tools). `post:true` *(Manage Events)* posts the full guide in the current channel, one message per section. Rerun it to update the guide; it replaces its previous messages |
 | `/char add/remove/main/prof/list/view` | Register characters by Forever's first + last name (e.g. *Asha Brightvale*), with class, race, role, level, main/alt and professions. `view` shows a synced profile: gear (linked to Wowhead), item level, professions, gold, played time, lockouts, reputation |
+| `/quests [character]` | A character's current quest log (up to 40), grouped by zone with objectives, Wowhead links, ready-to-turn-in markers, and which guildmates are on the same quest |
 | `/sync paste/link/unlink` | Sync characters from the uwucrew Sync addon: paste the in-game code, or link the companion app for automatic syncs |
 | `/ding` | Update a character's level and announce it (with a special shout for the first to hit 60) |
 | `/leaderboard` | Race to 60: highest levels, ties broken by who got there first |
@@ -33,7 +34,7 @@ Click a signup button again to withdraw. Signups use your main character's name.
 
 ## uwucrew Sync addon
 
-`addon/UwucrewSync` is a WoW Forever addon (interface `16001`) that records each character's level, XP, class, race, role, guild, gear and item level, professions, gold, time played, quests completed, dungeon/raid lockouts and top reputations.
+`addon/UwucrewSync` is a WoW Forever addon (interface `16001`) that records each character's level, XP, class, race, role, guild, gear and item level, professions, gold, time played, quests completed, current quest log with objectives, dungeon/raid lockouts and top reputations. Paste codes must fit Discord's 4000-character limit, so they shed detail (objectives first) when the log is full; the companion app always uploads everything.
 
 WoW addons can't use the internet, so data reaches the bot one of two ways:
 

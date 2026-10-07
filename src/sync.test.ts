@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { db, getChar } from "./db.ts";
 import { extractExports, extractLink } from "./savedvars.ts";
 import { applySync, newLinkCode, parseExport, profileEmbed, startSyncServer, userForToken, type Snapshot } from "./sync.ts";
+import { questsEmbed } from "./quests.ts";
 
 const luajit = Bun.which("luajit");
 const fakeClient = { channels: { fetch: async () => null } } as any;
@@ -47,6 +48,33 @@ test.skipIf(!luajit)("/uwu link in game ties the WoW account to the Discord user
   const { t } = JSON.parse(Buffer.from(code.slice("uwusync-".length), "base64url").toString());
   expect(userForToken(t)).toBe("linked-user");
   expect(extractExports(sv)[0]).not.toContain(t); // the secret never goes into paste codes
+});
+
+test.skipIf(!luajit)("/quests: full quest log from the app, with guildmates on the same quest", async () => {
+  const full = parseExport(extractExports(await addonSavedVariables())[0]!);
+  if ("error" in full) throw new Error(full.error);
+  expect(full.snap.log).toHaveLength(40); // Forever's quest log cap
+  expect(full.snap.log![1]!.o.map((o) => o.t)).toContain("Gnoll Paw: 3/8"); // the app's upload keeps objectives
+
+  const asha = applySync("quest-user", { ...full.snap, first: "Quest", last: "Haver" });
+  const mate = applySync("quest-mate", snap({ first: "Party", last: "Member", log: [{ id: 1002, n: "Shared", c: false, o: [] }] }));
+  if ("error" in asha || "error" in mate) throw new Error("sync failed");
+
+  const embed = questsEmbed(asha.char).toJSON();
+  expect(JSON.stringify(embed).length).toBeLessThan(6000);
+  expect(embed.fields!.every((f) => f.value.length <= 1024)).toBe(true);
+  expect(embed.fields!.map((f) => f.name).filter((n) => n !== "\u200b")).toEqual(["Wetlands · 10", "Zephras Isle · 10", "Hall of Thanes · 10", "Riverglades · 10"]);
+  for (const q of full.snap.log!) expect(JSON.stringify(embed)).toContain(q.n); // all 40 quests listed
+  expect(JSON.stringify(embed)).toMatch(/quest=1002\)[^\n]*also: [^\n]*Party Member/);
+  expect(embed.description).toContain("**4** ready to turn in");
+});
+
+test("/quests says when a paste code had to leave quests out", () => {
+  const r = applySync("paste-user", snap({ first: "Paste", last: "Only", log: [{ id: 5, n: "Kept", c: true, o: [] }], logMore: 4 }));
+  if ("error" in r) throw new Error(r.error);
+  const desc = questsEmbed(r.char).toJSON().description!;
+  expect(desc).toContain("**5** quests");
+  expect(desc).toContain("4 more didn't fit");
 });
 
 test("rejects junk and tampering with a helpful message", () => {

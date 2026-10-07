@@ -58,6 +58,7 @@ const TOPICS: Record<string, Topic> = {
       `**Automatic way:** ${cmd("sync link")} gives you a code for the uwucrew-sync app. Leave the app running while you play and it syncs every time you log out or \`/reload\`.`,
       "",
       `${e("tabard")} ${cmd("char view")} shows anyone's full synced profile with gear links.`,
+      `${e("scroll")} ${cmd("quests")} shows a quest log (up to 40 quests) with objectives, and who else in the guild is on each quest.`,
       "*The game only saves addon data on logout or /reload, so that's when syncs happen.*",
     ].join("\n"),
   },

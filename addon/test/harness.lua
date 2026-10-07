@@ -53,7 +53,23 @@ C_Reputation = {
     })[i]
   end,
 }
-C_QuestLog = { GetAllCompletedQuestIDs = function() return { 1, 2, 3, 4, 5 } end }
+-- A full quest log (Forever allows 40): 4 zone headers, 40 quests, objectives on each (big enough to force the paste code to trim).
+local log = {}
+for z, zone in ipairs({ "Wetlands", "Zephras Isle", "Hall of Thanes", "Riverglades" }) do
+  log[#log + 1] = { title = zone, isHeader = true }
+  for n = 1, 10 do
+    log[#log + 1] = { title = ("The Long and Winding Errand of %s, Part %d"):format(zone, n), questID = z * 1000 + n, level = 20 + n }
+  end
+end
+C_QuestLog = {
+  GetAllCompletedQuestIDs = function() return { 1, 2, 3, 4, 5 } end,
+  GetNumQuestLogEntries = function() return #log end,
+  GetInfo = function(i) return log[i] end,
+  IsComplete = function(id) return id % 10 == 1 end,
+  GetQuestObjectives = function(id)
+    return { { text = "Gnoll Paw: 3/8", finished = false }, { text = "Speak with Foreman Thistlenettle", finished = id % 2 == 0 } }
+  end,
+}
 GetSpecialization = function() return 1 end
 GetSpecializationRole = function() return "DAMAGER" end
 
@@ -76,6 +92,9 @@ SlashCmdList.UWUCREW("link " .. (os.getenv("UWU_LINK") or "uwusync-TestCode_Case
 assert(UwucrewSyncDB.link == (os.getenv("UWU_LINK") or "uwusync-TestCode_Case-Sensitive"), "link codes keep their case")
 SlashCmdList.UWUCREW("sync")
 fire("PLAYER_LOGOUT")
+assert(shown and #shown <= 3900, "paste code must fit a Discord modal, got " .. (shown and #shown or 0))
+assert(shown:find('"logMore":', 1, true) and shown:find('"log":[{', 1, true), "a full 40-quest log keeps as many quests as fit in the paste code")
+assert(UwucrewSyncDB.exports["Asha Brightvale"]:find("Gnoll Paw", 1, true), "the app's full upload keeps quest objectives")
 print(shown or "NO EXPORT")
 
 -- Mimic WoW's SavedVariables writer (%q-quoted strings).

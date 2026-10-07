@@ -12,6 +12,7 @@ import { bar, clip, COLOR, e, emojiId, icon, notice } from "./ui.ts";
 import { cmd, definition as helpDefinition, help } from "./help.ts";
 import { announceLevelUp, isFirstTo60, levelUpEmbed, PROGRESS_CHANNEL_ID } from "./progress.ts";
 import { profileEmbed, sync, definition as syncDefinition } from "./sync.ts";
+import { quests, definition as questsDefinition } from "./quests.ts";
 
 const OFFICER_CHANNEL_ID = process.env.OFFICER_CHANNEL_ID;
 const MEMBER_ROLE_ID = process.env.MEMBER_ROLE_ID;
@@ -105,6 +106,7 @@ export const definitions = [
   new SlashCommandBuilder().setName("forever").setDescription("WoW Forever dates, dungeons and raids"),
   helpDefinition,
   syncDefinition,
+  questsDefinition,
 ].map((c) => c.toJSON());
 
 // ---------- slash command handlers ----------
@@ -440,7 +442,7 @@ async function forever(i: Cmd) {
   });
 }
 
-export const commands: Record<string, (i: Cmd) => Promise<unknown>> = { char, ding, leaderboard, roster, crafters, event, lfg, sr, loot, attendance, apply, rolepanel, timezone, forever, help, sync };
+export const commands: Record<string, (i: Cmd) => Promise<unknown>> = { char, ding, leaderboard, roster, crafters, event, lfg, sr, loot, attendance, apply, rolepanel, timezone, forever, help, sync, quests };
 
 // ---------- autocomplete ----------
 
@@ -456,7 +458,7 @@ export async function autocomplete(i: AutocompleteInteraction) {
   if (f.name === "dungeon") return match(DUNGEONS.map((d) => ({ name: instanceLabel(d), value: d.name })));
   if (f.name === "title") return match([...RAIDS, ...DUNGEONS].map((x) => ({ name: instanceLabel(x).slice(0, 100), value: x.name })));
   if (f.name === "name") {
-    const all = i.commandName === "loot" || i.options.getSubcommand(false) === "view" || isOfficer(i);
+    const all = ["loot", "quests"].includes(i.commandName) || i.options.getSubcommand(false) === "view" || isOfficer(i);
     const chars = all ? db.query<Char, []>("select * from chars order by name").all() : userChars(i.user.id);
     return match(chars.map((c) => ({ name: `${c.name} (${c.level} ${c.class})`, value: c.name })));
   }

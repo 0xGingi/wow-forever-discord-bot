@@ -2,7 +2,7 @@
 ## Title: uwucrew Sync
 ## Notes: Syncs your characters' progress to the uwucrew Discord. /uwu sync
 ## Author: uwucrew
-## Version: 1.0.0
+## Version: 1.1.0
 ## SavedVariables: UwucrewSyncDB
 
 UwucrewSync.lua

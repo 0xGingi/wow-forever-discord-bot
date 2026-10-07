@@ -111,6 +111,36 @@ local function reputations()
   return top
 end
 
+-- Current quest log, grouped under the zone headers it appears under.
+-- ponytail: quests under a collapsed zone header aren't listed by the game; expanding headers would move the player's UI.
+local function questLog()
+  local list, zone = {}, nil
+  if C_QuestLog and C_QuestLog.GetNumQuestLogEntries and C_QuestLog.GetInfo then
+    for i = 1, C_QuestLog.GetNumQuestLogEntries() do
+      local q = C_QuestLog.GetInfo(i)
+      if q and q.isHeader then
+        zone = q.title
+      elseif q and q.questID and q.questID > 0 and not q.isHidden then
+        local entry = { id = q.questID, n = q.title, l = q.level, z = zone, c = (C_QuestLog.IsComplete and C_QuestLog.IsComplete(q.questID)) and true or false, o = {} }
+        for _, o in ipairs((C_QuestLog.GetQuestObjectives and C_QuestLog.GetQuestObjectives(q.questID)) or {}) do
+          if o.text and o.text ~= "" then entry.o[#entry.o + 1] = { t = o.text, d = o.finished and true or false } end
+        end
+        list[#list + 1] = entry
+      end
+    end
+  elseif GetNumQuestLogEntries and GetQuestLogTitle then -- classic-style quest log
+    for i = 1, GetNumQuestLogEntries() do
+      local title, level, _, isHeader, _, isComplete, _, questID = GetQuestLogTitle(i)
+      if isHeader then
+        zone = title
+      elseif title and questID then
+        list[#list + 1] = { id = questID, n = title, l = level, z = zone, c = isComplete == 1 or isComplete == true, o = {} }
+      end
+    end
+  end
+  return list
+end
+
 local function questsDone()
   if C_QuestLog and C_QuestLog.GetAllCompletedQuestIDs then return #(C_QuestLog.GetAllCompletedQuestIDs() or {}) end
 end
@@ -146,15 +176,33 @@ local function snapshot(levelOverride)
     class = classFile, race = raceName, raceFile = raceFile, role = role(),
     guild = known(GetGuildInfo("player")), money = GetMoney(), played = db.played[key],
     ilvl = ilvl and math.floor(ilvl + 0.5), quests = questsDone(),
-    gear = gear(), profs = professions(), lockouts = lockouts(), reps = reputations(),
+    gear = gear(), profs = professions(), lockouts = lockouts(), reps = reputations(), log = questLog(),
   }
-  -- Keep it pasteable: shed the least important detail until it fits a Discord modal.
-  local text = PREFIX .. encode(data)
-  if #text > MAX_EXPORT then data.reps = {}; text = PREFIX .. encode(data) end
-  if #text > MAX_EXPORT then for _, item in ipairs(data.gear) do item.n = nil end; text = PREFIX .. encode(data) end
+  db.exports[key] = PREFIX .. encode(data) -- the app uploads this in full
+  return data, key
+end
 
-  db.exports[key] = text
-  return text, key
+-- The paste code has to fit a Discord modal, so shed the least important detail until it does.
+local TRIMS = {
+  function(d) for _, q in ipairs(d.log) do q.o = {} end end, -- quest objectives
+  function(d) d.reps = {} end,
+  function(d) for _, item in ipairs(d.gear) do item.n = nil end end, -- item names (ids stay, the bot links them)
+  function(d) for _, q in ipairs(d.log) do q.z = nil end end, -- quest zones
+}
+local function pasteCode(data)
+  local text = PREFIX .. encode(data)
+  for _, trim in ipairs(TRIMS) do
+    if #text <= MAX_EXPORT then break end
+    trim(data)
+    text = PREFIX .. encode(data)
+  end
+  -- Last resort: keep as many quests as fit (the log holds up to 40) and say how many were left out.
+  while #text > MAX_EXPORT and #data.log > 0 do
+    table.remove(data.log)
+    data.logMore = (data.logMore or 0) + 1
+    text = PREFIX .. encode(data)
+  end
+  return text
 end
 
 ---------------------------------------------------------------- export window
@@ -232,6 +280,8 @@ events:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
 events:RegisterEvent("PLAYER_MONEY")
 events:RegisterEvent("UPDATE_INSTANCE_INFO")
 events:RegisterEvent("TIME_PLAYED_MSG")
+events:RegisterEvent("QUEST_LOG_UPDATE") -- accepted, progressed, abandoned
+events:RegisterEvent("QUEST_TURNED_IN")
 events:RegisterEvent("PLAYER_LOGOUT")
 events:SetScript("OnEvent", function(_, event, ...)
   if event == "ADDON_LOADED" then
@@ -266,9 +316,9 @@ SlashCmdList.UWUCREW = function(msg)
   local cmd, rest = (msg or ""):match("^%s*(%S*)%s*(.-)%s*$")
   cmd = cmd:lower()
   if cmd == "" or cmd == "sync" then
-    local text = snapshot()
-    if not text then return say("couldn't read your character yet, try again in a moment.") end
-    showExport(text)
+    local data = snapshot()
+    if not data then return say("couldn't read your character yet, try again in a moment.") end
+    showExport(pasteCode(data))
     if RequestTimePlayed then RequestTimePlayed() end -- refreshes time played for the next sync
   elseif cmd == "link" then
     if not rest:match("^uwusync%-[%w_%-]+$") then return say("paste the code from |cffffd100/sync link|r in Discord: |cffffd100/uwu link uwusync-...|r") end
