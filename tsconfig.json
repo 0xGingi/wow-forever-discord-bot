@@ -26,5 +26,7 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false
-  }
+  },
+  // The desktop app has its own tsconfig and dependencies.
+  "exclude": ["desktop", "node_modules"]
 }

@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { db, getChar } from "./db.ts";
-import { extractExports, extractLink } from "./savedvars.ts";
-import { applySync, newLinkCode, parseExport, profileEmbed, startSyncServer, userForToken, type Snapshot } from "./sync.ts";
+import { extractExports, extractLink, type Snapshot } from "./savedvars.ts";
+import { applySync, newLinkCode, parseExport, profileEmbed, startSyncServer, userForToken } from "./sync.ts";
 import { questsEmbed } from "./quests.ts";
 
 const luajit = Bun.which("luajit");

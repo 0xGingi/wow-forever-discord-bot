@@ -55,7 +55,7 @@ const TOPICS: Record<string, Topic> = {
       "Install the **uwucrew Sync** addon and your level, gear, professions, gold, lockouts and reputation sync from the game. Level-ups get announced automatically.",
       "",
       `**Quick way:** in game type \`/uwu sync\`, press Ctrl+C, then ${cmd("sync paste")} here and paste.`,
-      `**Automatic way:** ${cmd("sync link")} gives you a code for the uwucrew-sync app. Leave the app running while you play and it syncs every time you log out or \`/reload\`.`,
+      `**Automatic way:** get the uwucrew Sync app (it installs and updates the addon for you) and paste the code from ${cmd("sync link")} into it. It syncs every time you log out or \`/reload\`, and shows your characters too.`,
       "",
       `${e("tabard")} ${cmd("char view")} shows anyone's full synced profile with gear links.`,
       `${e("scroll")} ${cmd("quests")} shows a quest log (up to 40 quests) with objectives, and who else in the guild is on each quest.`,

@@ -3,20 +3,19 @@
   "type": "module",
   "private": true,
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "^1.4.4"
   },
   "peerDependencies": {
-    "typescript": "^7"
+    "typescript": "^7.0.2"
   },
   "dependencies": {
-    "chrono-node": "^2.10.2",
+    "chrono-node": "^2.10.3",
     "discord.js": "^14.27.0"
   },
   "scripts": {
     "start": "bun src/index.ts",
-    "test": "DB_PATH=:memory: bun test",
+    "test": "DB_PATH=:memory: bun test src",
     "typecheck": "tsc --noEmit",
-    "build:companion": "bun build companion/uwucrew-sync.ts --compile --minify --target=bun-windows-x64 --outfile dist/uwucrew-sync-windows.exe && bun build companion/uwucrew-sync.ts --compile --minify --target=bun-darwin-arm64 --outfile dist/uwucrew-sync-mac-apple-silicon && bun build companion/uwucrew-sync.ts --compile --minify --target=bun-darwin-x64 --outfile dist/uwucrew-sync-mac-intel && bun build companion/uwucrew-sync.ts --compile --minify --target=bun-linux-x64 --outfile dist/uwucrew-sync-linux",
     "build:addon": "mkdir -p dist && cd addon && rm -f ../dist/UwucrewSync.zip && zip -qr ../dist/UwucrewSync.zip UwucrewSync"
   }
 }

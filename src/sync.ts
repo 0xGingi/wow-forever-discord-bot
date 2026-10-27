@@ -6,26 +6,11 @@ import {
 import { db, getChar, userChars, type Char } from "./db.ts";
 import { CLASSES, formatCharName, PROFESSIONS, RACES, type ClassName } from "./game.ts";
 import { announceLevelUp, isFirstTo60, levelUpEmbed } from "./progress.ts";
-import { PREFIX } from "./savedvars.ts";
+import { PREFIX, type Snapshot } from "./savedvars.ts";
 import { bar, clip, COLOR, e, icon, notice } from "./ui.ts";
 
 const PUBLIC_URL = process.env.SYNC_PUBLIC_URL?.replace(/\/$/, "");
 const COMPANION_URL = process.env.COMPANION_URL;
-
-/** One character as the uwucrew Sync addon reports it. Short keys keep the paste code small. */
-export type Snapshot = {
-  v: 1; t: number; first: string; last: string; level: number; xp?: number; xpMax?: number;
-  class: string; race?: string; raceFile?: string; role?: string; guild?: string;
-  money?: number; played?: number; ilvl?: number; quests?: number;
-  gear: { s: number; id: number; n?: string; q?: number; l?: number }[];
-  profs: { n: string; r: number; m: number }[];
-  lockouts: { n: string; raid: boolean; k: number; of: number; reset: number }[];
-  reps: { n: string; r: number; p: number; m: number }[];
-  /** Current quest log (addon 1.1+). Objectives may be empty in paste codes, which trim them to fit. */
-  log?: { id: number; n: string; l?: number; z?: string; c: boolean; o: { t: string; d: boolean }[] }[];
-  /** Quests left out of a paste code to make it fit. */
-  logMore?: number;
-};
 
 // ---------- parsing (trust boundary: anyone can paste anything) ----------
 
@@ -105,7 +90,7 @@ export function applySync(userId: string, snap: Snapshot): Applied | { error: st
   return { char: getChar(name)!, created: !existing, prevLevel: existing?.level ?? null, first60 };
 }
 
-/** Parse, apply and announce one code. Shared by /sync paste and the companion app endpoint. */
+/** Parse, apply and announce one code. Shared by /sync paste and the desktop app endpoint. */
 export async function syncCode(client: Client, userId: string, text: string, fallbackChannelId?: string | null) {
   const parsed = parseExport(text);
   if ("error" in parsed) return { ok: false as const, message: parsed.error };
@@ -119,7 +104,7 @@ export async function syncCode(client: Client, userId: string, text: string, fal
   return { ok: true as const, name: r.char.name, message: `**${r.char.name}** ${what} (level ${r.char.level}).` };
 }
 
-// ---------- companion app link codes ----------
+// ---------- desktop app link codes ----------
 
 const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 
@@ -131,7 +116,7 @@ export function newLinkCode(userId: string, url: string) {
 export const userForToken = (token: string | undefined | null) =>
   token ? (db.query<{ user_id: string }, [string]>("select user_id from sync_tokens where hash = ?").get(sha(token))?.user_id ?? null) : null;
 
-// ---------- HTTP endpoint for the companion app ----------
+// ---------- HTTP endpoint for the desktop app ----------
 
 const lastUpload = new Map<string, number>();
 
@@ -187,9 +172,10 @@ export async function sync(i: ChatInputCommandInteraction) {
   const code = newLinkCode(i.user.id, PUBLIC_URL);
   return i.reply({
     ...notice("info", "**Connect your WoW account**", [
-      `**1.** In game, type \`/uwu link \` and paste the code below (Ctrl+V), then \`/reload\`.`,
-      `**2.** ${COMPANION_URL ? `[Download the uwucrew-sync app](${COMPANION_URL}) and run it` : "Run the uwucrew-sync app"}. Leave it open while you play.`,
-      "Every character on that WoW account then syncs to you after each logout or `/reload`. Keep the code private, and running this again replaces it.",
+      `**1.** ${COMPANION_URL ? `[Get the uwucrew Sync app](${COMPANION_URL})` : "Get the uwucrew Sync app"} and open it. It installs the addon for you and keeps it updated.`,
+      "**2.** Paste the code below into the app (Settings → Discord link).",
+      "Every character on that PC then syncs to you after each logout or `/reload`. Sharing a PC? Link each WoW account in game instead: `/uwu link <code>`, then `/reload`.",
+      "Keep the code private. Running this again replaces it.",
     ].join("\n")),
     content: `\`\`\`\n${code}\n\`\`\``,
   });

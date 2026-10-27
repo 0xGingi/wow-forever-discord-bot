@@ -1,7 +1,7 @@
 import { EmbedBuilder, SlashCommandBuilder, type ChatInputCommandInteraction } from "discord.js";
 import { db, getChar, userChars, type Char } from "./db.ts";
 import { CLASSES, type ClassName } from "./game.ts";
-import type { Snapshot } from "./sync.ts";
+import type { Snapshot } from "./savedvars.ts";
 import { COLOR, e, icon, notice } from "./ui.ts";
 
 export const definition = new SlashCommandBuilder().setName("quests").setDescription("Quests a character is on right now (synced from the game)")
@@ -76,7 +76,7 @@ export function questsEmbed(c: Char) {
   }
 
   const ready = d.log.filter((q) => q.c).length;
-  const more = d.logMore ? `\n${e("note")} ${d.logMore} more didn't fit in the paste code. The uwucrew-sync app syncs the full log.` : "";
+  const more = d.logMore ? `\n${e("note")} ${d.logMore} more didn't fit in the paste code. The uwucrew Sync app syncs the full log.` : "";
   return embed
     .setDescription(`**${d.log.length + (d.logMore ?? 0)}** quests · ${e("done")} **${ready}** ready to turn in${more}`)
     .setFooter({ text: "Synced from the game" })

@@ -9,7 +9,7 @@ Discord bot for **uwucrew**, a World of Warcraft: Forever guild.
 | `/help [post]` | In-Discord guide: quick start plus topic pages (characters, raids, LFG, loot, timezones, officer tools). `post:true` *(Manage Events)* posts the full guide in the current channel, one message per section. Rerun it to update the guide; it replaces its previous messages |
 | `/char add/remove/main/prof/list/view` | Register characters by Forever's first + last name (e.g. *Asha Brightvale*), with class, race, role, level, main/alt and professions. `view` shows a synced profile: gear (linked to Wowhead), item level, professions, gold, played time, lockouts, reputation |
 | `/quests [character]` | A character's current quest log (up to 40), grouped by zone with objectives, Wowhead links, ready-to-turn-in markers, and which guildmates are on the same quest |
-| `/sync paste/link/unlink` | Sync characters from the uwucrew Sync addon: paste the in-game code, or link the companion app for automatic syncs |
+| `/sync paste/link/unlink` | Sync characters from the uwucrew Sync addon: paste the in-game code, or link the desktop app for automatic syncs |
 | `/ding` | Update a character's level and announce it (with a special shout for the first to hit 60) |
 | `/leaderboard` | Race to 60: highest levels, ties broken by who got there first |
 | `/roster [class] [alts]` | Guild roster grouped by class, with role counts |
@@ -34,16 +34,22 @@ Click a signup button again to withdraw. Signups use your main character's name.
 
 ## uwucrew Sync addon
 
-`addon/UwucrewSync` is a WoW Forever addon (interface `16001`) that records each character's level, XP, class, race, role, guild, gear and item level, professions, gold, time played, quests completed, current quest log with objectives, dungeon/raid lockouts and top reputations. Paste codes must fit Discord's 4000-character limit, so they shed detail (objectives first) when the log is full; the companion app always uploads everything.
+`addon/UwucrewSync` is a WoW Forever addon (interface `16001`) that records each character's level, XP, class, race, role, guild, gear and item level, professions, gold, time played, quests completed, current quest log with objectives, dungeon/raid lockouts and top reputations. Paste codes must fit Discord's 4000-character limit, so they shed detail (objectives first) when the log is full; the desktop app always uploads everything.
 
 WoW addons can't use the internet, so data reaches the bot one of two ways:
 
 - **Paste:** `/uwu sync` in game shows a code; `/sync paste` in Discord takes it. Works with no setup.
-- **Companion app:** `/sync link` gives a private link code. The `uwucrew-sync` app watches the addon's SavedVariables file (written on every logout and `/reload`) and uploads it. Needs `SYNC_PUBLIC_URL` pointing at the bot's sync port (`8787` inside the container) over HTTPS, e.g. through a reverse proxy or tunnel. With Docker, the bundled Cloudflare Tunnel (below) is the easiest way.
+- **Desktop app:** `/sync link` gives a private link code. The uwucrew Sync app (`desktop/`) watches the addon's SavedVariables file (written on every logout and `/reload`) and uploads it. Needs `SYNC_PUBLIC_URL` pointing at the bot's sync port (`8787` inside the container) over HTTPS, e.g. through a reverse proxy or tunnel. With Docker, the bundled Cloudflare Tunnel (below) is the easiest way.
 
 Synced characters are created or updated automatically; professions follow what the game reports; level-ups are announced in `PROGRESS_CHANNEL_ID` (or the channel used for `/sync paste`). Characters registered to another Discord user can't be overwritten.
 
-Linking: `/sync link` in Discord gives a private code; `/uwu link <code>` in game ties that WoW account (all its characters) to the Discord user. The app reads the link from the addon's saved file, so it needs no setup, and several WoW accounts on one PC can each sync to a different person.
+Linking: `/sync link` in Discord gives a private code. Paste it into the app (Settings → Discord link) and every WoW account on that PC syncs to that Discord user. To split a shared PC between people, use `/uwu link <code>` in game instead: it ties just that WoW account, and an in-game link wins over the app's.
+
+### Desktop app
+
+`desktop/` is an Electron app for players. It finds the WoW folder, installs the addon from the latest release into `Interface/AddOns` and checks for addon updates every 3 hours, uploads after every logout or `/reload`, and shows each character: gear by slot (linked to Wowhead), XP, gold, professions, reputation, lockouts and the quest log with in-game difficulty colours. Closing the window keeps it syncing from the tray. On Windows and Mac it starts with the computer, which can be turned off in Settings.
+
+Everything besides the UI is in `desktop/core.ts`, tested by `desktop/core.test.ts` against a fake WoW folder, bot and release. To run it: `cd desktop && bun install && bun start`. `bun run dist` packages it for the current OS into `desktop/release/`.
 
 ### Downloads and CI
 
@@ -52,12 +58,14 @@ GitHub Actions builds each part when its code changes, and pushes from `main` up
 | Workflow | Triggered by | Output |
 |---|---|---|
 | `addon.yml` | `addon/**` | Runs the addon against the fake WoW API, then `UwucrewSync.zip` |
-| `companion.yml` | `companion/**`, `src/savedvars.ts` | `uwucrew-sync` for Windows, Mac (Apple Silicon + Intel, ad-hoc signed) and Linux, each smoke-tested on its own OS |
+| `desktop.yml` | `desktop/**`, `src/savedvars.ts`, `assets/emoji/**` | The desktop app: Windows installer, Mac DMGs (Apple Silicon + Intel, signed and notarized) and a Linux AppImage. Each packaged app is launched once on its own OS |
 | `server.yml` | `src/**`, `Dockerfile`, deps | Typecheck + tests, then `ghcr.io/0xgingi/wow-forever-discord-bot` |
+
+Mac builds are signed with a Developer ID certificate and notarized by Apple, which needs these repository secrets: `MAC_CERT_P12` (the certificate as a base64 `.p12`), `MAC_CERT_PASSWORD`, and an App Store Connect API key as `APPLE_API_KEY_P8` (the `.p8` file's contents), `APPLE_API_KEY_ID` and `APPLE_API_ISSUER`. The Mac job fails if the app doesn't pass Gatekeeper.
 
 Set `COMPANION_URL` to the release page so `/sync link` shows players where to download. Players can only download if the repo (or a mirror of the release) is public.
 
-Local builds: `bun run build:addon` and `bun run build:companion`. Cross-compiling needs a stable Bun; with a canary build, run it in Docker: `docker run --rm -v "$PWD":/app -w /app oven/bun:latest bun run build:companion`.
+Local builds: `bun run build:addon`, and `bun run dist` in `desktop/`.
 
 ### Public URL (Cloudflare Tunnel)
 

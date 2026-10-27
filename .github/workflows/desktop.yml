@@ -1,0 +1,75 @@
+name: Desktop app
+
+on:
+  push:
+    paths: ["desktop/**", "src/savedvars.ts", "assets/emoji/**", ".github/workflows/desktop.yml"]
+  pull_request:
+    paths: ["desktop/**", "src/savedvars.ts", "assets/emoji/**", ".github/workflows/desktop.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write # publish to the rolling "latest" release
+
+jobs:
+  build:
+    # Each OS packages its own installer and launches the packaged app once, so we know it starts there.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - name: Typecheck and test (fake WoW folder, fake bot, fake addon release)
+        if: runner.os == 'Linux'
+        run: bun run typecheck && bun test
+      - name: Package
+        if: runner.os != 'macOS'
+        run: bun run dist
+      - name: Package, sign and notarize (Apple Silicon and Intel)
+        if: runner.os == 'macOS'
+        env:
+          CSC_LINK: ${{ secrets.MAC_CERT_P12 }} # Developer ID Application cert, base64 .p12
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          export APPLE_API_KEY="$RUNNER_TEMP/apple-api-key.p8"
+          printf '%s' "$APPLE_API_KEY_P8" > "$APPLE_API_KEY"
+          bun run dist
+      - name: Launch the packaged app
+        run: |
+          case "$RUNNER_OS" in
+            Linux) xvfb-run -a release/linux-unpacked/uwucrew-sync --smoke --no-sandbox ;;
+            Windows) "release/win-unpacked/uwucrew Sync.exe" --smoke ;;
+            macOS)
+              codesign --verify --deep --strict "release/mac-arm64/uwucrew Sync.app"
+              spctl --assess --type execute -vv "release/mac-arm64/uwucrew Sync.app" # fails unless signed and notarized
+              "release/mac-arm64/uwucrew Sync.app/Contents/MacOS/uwucrew Sync" --smoke ;;
+          esac
+      - uses: actions/upload-artifact@v4
+        with:
+          name: uwucrew-sync-${{ runner.os }}
+          path: |
+            desktop/release/uwucrew-sync-*.exe
+            desktop/release/uwucrew-sync-*.dmg
+            desktop/release/uwucrew-sync-*.AppImage
+      - name: Publish to the "latest" release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          shopt -s nullglob
+          files=(release/uwucrew-sync-*.exe release/uwucrew-sync-*.dmg release/uwucrew-sync-*.AppImage)
+          gh release view latest >/dev/null 2>&1 || gh release create latest --title "Latest build" --notes-file ../.github/release-notes.md || true
+          gh release edit latest --notes-file ../.github/release-notes.md # the notes describe these downloads
+          gh release upload latest "${files[@]}" --clobber

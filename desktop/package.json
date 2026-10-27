@@ -1,0 +1,61 @@
+{
+  "name": "uwucrew-sync",
+  "productName": "uwucrew Sync",
+  "description": "Installs the uwucrew Sync addon and keeps your WoW characters synced to the uwucrew Discord",
+  "version": "2.0.0",
+  "author": "uwucrew",
+  "private": true,
+  "type": "module",
+  "main": "dist/main.js",
+  "desktopName": "uwucrew-sync.desktop",
+  "scripts": {
+    "build": "bun build.ts",
+    "start": "bun build.ts && electron .",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "dist": "bun build.ts && electron-builder --publish never"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.4",
+    "electron": "^45.0.0",
+    "electron-builder": "^26.18.0",
+    "typescript": "^7.0.2"
+  },
+  "build": {
+    "appId": "gg.uwucrew.sync",
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "npmRebuild": false,
+    "artifactName": "uwucrew-sync-${os}-${arch}.${ext}",
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "artifactName": "uwucrew-sync-windows-setup.${ext}"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "category": "public.app-category.games"
+    },
+    "linux": {
+      "target": "AppImage",
+      "category": "Game",
+      "executableName": "uwucrew-sync",
+      "syncDesktopName": true
+    }
+  }
+}
