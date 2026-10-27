@@ -5,6 +5,7 @@ import { notice, syncEmojis } from "./ui.ts";
 import { cleanupGroups } from "./groups.ts";
 import { helpSelect, setCommandIds } from "./help.ts";
 import { startSyncServer, syncPasteSubmit } from "./sync.ts";
+import { startBackups } from "./db.ts";
 import { PROGRESS_CHANNEL_ID } from "./progress.ts";
 
 const { DISCORD_TOKEN, GUILD_ID } = process.env;
@@ -21,6 +22,7 @@ client.once(Events.ClientReady, async (c) => {
     const ch = await c.channels.fetch(PROGRESS_CHANNEL_ID).catch(() => null);
     console.log(ch?.isSendable() ? `Level-ups go to #${"name" in ch ? ch.name : PROGRESS_CHANNEL_ID}` : `WARNING: can't post in PROGRESS_CHANNEL_ID ${PROGRESS_CHANNEL_ID}; check the bot can see and send there`);
   }
+  startBackups();
   setInterval(() => {
     sendReminders(c).catch(console.error);
     spawnRepeats(c).catch(console.error);

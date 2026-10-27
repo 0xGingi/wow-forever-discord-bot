@@ -14,6 +14,8 @@ Discord bot for **uwucrew**, a World of Warcraft: Forever guild.
 | `/leaderboard` | Race to 60: highest levels, ties broken by who got there first |
 | `/roster [class] [alts]` | Guild roster grouped by class, with role counts |
 | `/crafters <profession>` | Who has a profession, by skill |
+| `/craft <item>` | Who can craft a specific item, from recipes the addon syncs when someone opens their profession window |
+| `/progress` | Raid progress from synced lockouts: bosses down per raid, first-kill dates, best clear this week |
 | `/event create/cancel` | *(Manage Events)* Raid post with Tank/Healer/DPS/Tentative/Absent buttons and a ping reminder before start. Also shows in Discord's **Events** tab. Can repeat weekly or every 2 weeks (the next one is posted when the current one starts). `cancel series:true` stops the repeats |
 | `/sr reserve/list` | One soft reserve per person per raid |
 | `/lfg <dungeon> <role>` | 5-man group finder (1 tank / 1 healer / 3 DPS), pings everyone when full |
@@ -34,20 +36,22 @@ Click a signup button again to withdraw. Signups use your main character's name.
 
 ## uwucrew Sync addon
 
-`addon/UwucrewSync` is a WoW Forever addon (interface `16001`) that records each character's level, XP, class, race, role, guild, gear and item level, professions, gold, time played, quests completed, current quest log with objectives, dungeon/raid lockouts and top reputations. Paste codes must fit Discord's 4000-character limit, so they shed detail (objectives first) when the log is full; the desktop app always uploads everything.
+`addon/UwucrewSync` is a WoW Forever addon (interface `16001`) that records each character's level, XP, class, race, role, guild, gear and item level, professions and known recipes, gold, time played, quests completed, current quest log with objectives, dungeon/raid lockouts (with the raid bosses killed), top reputations, and Hardcore deaths. Paste codes must fit Discord's 4000-character limit, so they shed detail (objectives first) when the log is full; the desktop app always uploads everything.
 
 WoW addons can't use the internet, so data reaches the bot one of two ways:
 
 - **Paste:** `/uwu sync` in game shows a code; `/sync paste` in Discord takes it. Works with no setup.
 - **Desktop app:** `/sync link` gives a private link code. The uwucrew Sync app (`desktop/`) watches the addon's SavedVariables file (written on every logout and `/reload`) and uploads it. Needs `SYNC_PUBLIC_URL` pointing at the bot's sync port (`8787` inside the container) over HTTPS, e.g. through a reverse proxy or tunnel. With Docker, the bundled Cloudflare Tunnel (below) is the easiest way.
 
-Synced characters are created or updated automatically; professions follow what the game reports; level-ups are announced in `PROGRESS_CHANNEL_ID` (or the channel used for `/sync paste`). Characters registered to another Discord user can't be overwritten.
+Synced characters are created or updated automatically; professions follow what the game reports; level-ups, the guild's first kill of each raid boss (and full clears), and Hardcore deaths are announced in `PROGRESS_CHANNEL_ID` (or the channel used for `/sync paste`). Anything the addon saved before the beta closed is ignored, since beta characters didn't carry over. Characters registered to another Discord user can't be overwritten.
 
 Linking: `/sync link` in Discord gives a private code. Paste it into the app (Settings → Discord link) and every WoW account on that PC syncs to that Discord user. To split a shared PC between people, use `/uwu link <code>` in game instead: it ties just that WoW account, and an in-game link wins over the app's.
 
 ### Desktop app
 
 `desktop/` is an Electron app for players. It finds the WoW folder, installs the addon from the latest release into `Interface/AddOns` and checks for addon updates every 3 hours, uploads after every logout or `/reload`, and shows each character: gear by slot (linked to Wowhead), XP, gold, professions, reputation, lockouts and the quest log with in-game difficulty colours. Closing the window keeps it syncing from the tray. On Windows and Mac it starts with the computer, which can be turned off in Settings.
+
+With a link it also shows the guild, from the bot's `GET /guild`: a **Guild** tab (raid progress, race to 60, a "who can craft it" search, the roster) and a **Raids** tab with the same signup buttons as the Discord posts (`POST /signup`). Each quest in your log lists guildmates on it, and gear shows Wowhead icons. The app also writes the addon's `GuildData.lua` (upcoming raids and who's on which quest), which the game loads on login or `/reload`: the addon then shows your next raid at login, names guildmates when you accept a quest they're on, and adds `/uwu raids` and `/uwu quests`. The addon release ships that file empty, and the app's updates never overwrite it.
 
 The app updates itself from the `latest` release (checked at launch and every 3 hours). CI numbers each build `2.0.<run number>`, and installed apps take any higher version: from the tray they restart into it quietly, with the window open they show a *Restart to update* button.
 
@@ -87,7 +91,7 @@ docker compose up -d --build        # add --pull to pick up the newest oven/bun:
 docker compose logs -f
 ```
 
-The database lives in the `data` volume at `/data/uwucrew.sqlite`. Back it up with `docker compose cp bot:/data/uwucrew.sqlite .`.
+The database lives in the `data` volume at `/data/uwucrew.sqlite`. The bot copies it to `/data/backups/` once a day and keeps the last 7; grab one with `docker compose cp bot:/data/backups .`. Those copies sit in the same volume, so copy them somewhere else now and then.
 
 Commands register to `GUILD_ID` on startup. On first start the bot uploads the WoW icons in `assets/emoji/` as **application emojis**, which takes about a minute and only happens once. They're owned by the bot, so they work in any server or DM and use none of your server's emoji slots. To add an icon, drop a 56×56 `.jpg` named after a class, race, role or profession (Wowhead's `https://wow.zamimg.com/images/wow/icons/large/<icon>.jpg` works) into that folder and restart. Data lives in a single SQLite file (`DB_PATH`), so back that file up.
 

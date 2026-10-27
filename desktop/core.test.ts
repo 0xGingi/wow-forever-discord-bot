@@ -1,6 +1,6 @@
 // A fake WoW folder, a fake bot and a fake addon release: finds the saved data, uploads it, installs and updates the addon.
 import { expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as core from "./core.ts";
@@ -57,4 +57,30 @@ test("installs the addon from the release zip, then only updates what changed", 
 
   writeFileSync(join(addon, "UwucrewSync.lua"), "-- old version");
   expect(core.installAddon(addon, files)).toEqual(["UwucrewSync.lua"]);
+});
+
+test("GuildData.lua: what the app writes loads in Lua, and addon updates never overwrite it", () => {
+  const addon = core.addonDir(wow, "_forever_");
+  const guild: core.Guild = {
+    chars: [
+      { name: 'Lyra "Lightbringer" Dawn', quests: [338, 1053] } as core.GuildChar,
+      { name: "Wren Thistledown", quests: [338] } as core.GuildChar,
+    ],
+    events: [{ id: 1, title: "Barrow Deeps", startsAt: 1_900_000_000, size: 10, going: 4, mine: { status: "in", role: "Healer" } } as core.GuildEvent],
+    recipes: {}, progress: [], raidsOpen: 0,
+  };
+  expect(core.writeGuildFile(addon, guild)).toBe(true);
+  expect(core.writeGuildFile(addon, guild)).toBe(false); // unchanged content isn't rewritten
+
+  const luajit = Bun.which("luajit");
+  if (luajit) {
+    const lua = `dofile(arg[1]); local g = UwucrewSyncGuild; print(g.raids[1].title, g.raids[1].mine, g.raids[1].size, table.concat(g.quests[338], "|"))`;
+    const out = Bun.spawnSync([luajit, "-e", `arg = { "${join(addon, core.GUILD_FILE)}" } ${lua}`]).stdout.toString().trim();
+    expect(out).toBe('Barrow Deeps\tHealer\t10\tLyra "Lightbringer" Dawn|Wren Thistledown');
+  }
+
+  const release = new Map([[core.GUILD_FILE, Buffer.from("-- empty stub")], ["UwucrewSync.toc", readFileSync(join(addon, "UwucrewSync.toc"))]]);
+  expect(core.addonChanges(addon, release)).toEqual([]); // the app's GuildData.lua stays
+  rmSync(join(addon, core.GUILD_FILE));
+  expect(core.installAddon(addon, release)).toEqual([core.GUILD_FILE]); // but a fresh install gets the stub
 });

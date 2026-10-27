@@ -1,6 +1,9 @@
 import { Database } from "bun:sqlite";
 import { expect, test } from "bun:test";
-import { migrate } from "./db.ts";
+import { existsSync, mkdtempSync, readdirSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { backup, db, migrate } from "./db.ts";
 
 test("migrate upgrades a db made by an older version without losing data", () => {
   const old = new Database(":memory:", { strict: true });
@@ -21,4 +24,14 @@ test("migrate upgrades a db made by an older version without losing data", () =>
   expect(c.name).toBe("Gingi");
   expect(c.level_at).toBeGreaterThan(1_700_000_000); // backfilled with unixepoch(), not 0
   expect(old.query("select name from sqlite_schema where name = 'users'").get()).toBeTruthy(); // new table created
+});
+
+test("daily backups: one readable copy per day, oldest deleted past the limit", () => {
+  const dir = mkdtempSync(join(tmpdir(), "uwucrew-backups-"));
+  db.run("insert into users values ('backup-user', 'UTC') on conflict do nothing");
+  for (const day of ["2026-11-01", "2026-11-02", "2026-11-03", "2026-11-03"]) backup(dir, 2, new Date(`${day}T12:00:00Z`));
+  expect(readdirSync(dir).sort()).toEqual(["uwucrew-2026-11-02.sqlite", "uwucrew-2026-11-03.sqlite"]);
+  const copy = new Database(join(dir, "uwucrew-2026-11-03.sqlite"), { readonly: true });
+  expect(copy.query("select tz from users where user_id = 'backup-user'").get()).toEqual({ tz: "UTC" });
+  expect(existsSync(join(dir, "uwucrew-2026-11-01.sqlite"))).toBe(false);
 });

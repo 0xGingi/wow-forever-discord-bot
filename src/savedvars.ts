@@ -14,12 +14,18 @@ export type Snapshot = {
   money?: number; played?: number; ilvl?: number; quests?: number;
   gear: { s: number; id: number; n?: string; q?: number; l?: number }[];
   profs: { n: string; r: number; m: number }[];
-  lockouts: { n: string; raid: boolean; k: number; of: number; reset: number }[];
+  /** `b`: bosses killed this lockout (addon 1.2+, raids only). */
+  lockouts: { n: string; raid: boolean; k: number; of: number; reset: number; b?: string[] }[];
   reps: { n: string; r: number; p: number; m: number }[];
   /** Current quest log (addon 1.1+). Objectives may be empty in paste codes, which trim them to fit. */
   log?: { id: number; n: string; l?: number; z?: string; c: boolean; o: { t: string; d: boolean }[] }[];
   /** Quests left out of a paste code to make it fit. */
   logMore?: number;
+  /** Known recipes by profession (addon 1.2+), recorded whenever a profession window was last opened. App uploads only. */
+  recipes?: Record<string, string[]>;
+  /** Hardcore character, and its death if it died (addon 1.2+). */
+  hc?: boolean;
+  died?: { t: number; l: number; z?: string };
 };
 
 /** The Discord link code saved by `/uwu link`, if this WoW account is linked. */

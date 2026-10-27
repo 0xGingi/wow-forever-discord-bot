@@ -45,6 +45,7 @@ const TOPICS: Record<string, Topic> = {
       `${e("level60")} ${cmd("leaderboard")} The race to 60.`,
       `${e("tank")} ${cmd("roster")} Everyone by class and role.`,
       `${e("tailoring")} ${cmd("crafters")} Who can craft what, by skill.`,
+      `${e("note")} ${cmd("craft")} Who can craft a specific item, from the recipes the addon syncs.`,
     ].join("\n"),
   },
   sync: {
@@ -52,7 +53,8 @@ const TOPICS: Record<string, Topic> = {
     icon: "hearth",
     blurb: "The uwucrew Sync addon fills in your profile",
     body: () => [
-      "Install the **uwucrew Sync** addon and your level, gear, professions, gold, lockouts and reputation sync from the game. Level-ups get announced automatically.",
+      "Install the **uwucrew Sync** addon and your level, gear, professions, gold, lockouts and reputation sync from the game. Level-ups, first raid boss kills and Hardcore deaths get announced automatically.",
+      "Open your profession window once in game and your recipes sync too, so guildmates can find you with `/craft`.",
       "",
       `**Quick way:** in game type \`/uwu sync\`, press Ctrl+C, then ${cmd("sync paste")} here and paste.`,
       `**Automatic way:** get the uwucrew Sync app (it installs and updates the addon for you) and paste the code from ${cmd("sync link")} into it. It syncs every time you log out or \`/reload\`, and shows your characters too.`,
@@ -68,7 +70,7 @@ const TOPICS: Record<string, Topic> = {
     blurb: "Signing up, bench, reminders, soft reserves",
     body: () => [
       `**Sign up** with the buttons on a raid post: ${e("tank")} Tank, ${e("healer")} Healer, ${e("dps")} DPS, ${e("tentative")} Tentative or ${e("absent")} Absent.`,
-      "Click the same button again to withdraw, or another one to switch.",
+      "Click the same button again to withdraw, or another one to switch. The uwucrew Sync app's **Raids** tab has the same buttons.",
       "",
       `${e("bench")} **Bench:** if the raid is full you go on the bench, and you're moved in automatically (with a DM) when a spot opens.`,
       `${e("clock")} **Reminder:** everyone signed up gets pinged shortly before start.`,
@@ -77,6 +79,7 @@ const TOPICS: Record<string, Topic> = {
       "",
       `${e("reserve")} ${cmd("sr reserve")} Soft reserve one item per raid. ${cmd("sr list")} shows everyone's.`,
       `${e("scroll")} ${cmd("attendance")} Signup rate over the last 10 raids.`,
+      `${e("crown")} ${cmd("progress")} Raid progress: bosses down, first kills, and the best clear this week.`,
     ].join("\n"),
   },
   lfg: {

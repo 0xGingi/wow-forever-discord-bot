@@ -20,7 +20,12 @@ CreateFrame = function(kind)
   return f
 end
 UIParent, ChatFontNormal, UISpecialFrames, SlashCmdList = {}, {}, {}, {}
-tinsert, time = table.insert, os.time -- WoW globals
+tinsert, time, date = table.insert, os.time, os.date -- WoW globals
+local realPrint, said = print, {}
+print = function(text) said[#said + 1] = tostring(text) end -- chat output, checked below
+local function heard(pattern)
+  for _, line in ipairs(said) do if line:find(pattern) then return line end end
+end
 C_Timer = { After = function(_, fn) timers[#timers + 1] = fn end }
 issecretvalue = function() return mode == "secret" end
 local level = 29
@@ -41,8 +46,25 @@ end
 C_Item = { GetItemQualityByID = function(id) return id == 271766 and 3 or 2 end, GetDetailedItemLevelInfo = function() return 31 end }
 GetProfessions = function() return 1, 2, nil, 4 end
 GetProfessionInfo = function(i) return ({ "Tailoring", "Enchanting", nil, "Fishing" })[i], 0, 150 + i, 225 end
-GetNumSavedInstances = function() return 1 end
-GetSavedInstanceInfo = function() return "Hall of Thanes", 1, 3600, 1, true, false, 0, false, 5, "Normal", 4, 3 end
+GetNumSavedInstances = function() return 2 end
+GetSavedInstanceInfo = function(i)
+  if i == 1 then return "Hall of Thanes", 1, 3600, 1, true, false, 0, false, 5, "Normal", 4, 3 end
+  return "Hyjal Summit", 2, 86400, 1, true, false, 0, true, 20, "20 Player", 5, 2
+end
+local HYJAL = { "Rage Winterchill", "Anetheron", "Kaz'rogal", "Azgalor", "Archimonde" }
+GetSavedInstanceEncounterInfo = function(_, e) return HYJAL[e], 0, e <= 2 end
+C_GameRules = { IsHardcoreActive = function() return true end }
+GetZoneText = function() return "Wetlands" end
+-- Classic-style profession window: a header and two recipes.
+local skills = { { "Cloth", "header" }, { "Bolt of Silk Cloth", "optimal" }, { "Azure Silk Hood", "medium" } }
+GetTradeSkillLine = function() return "Tailoring", 151, 225 end
+GetNumTradeSkills = function() return #skills end
+GetTradeSkillInfo = function(i) return skills[i][1], skills[i][2] end
+-- What the uwucrew Sync app writes into GuildData.lua.
+UwucrewSyncGuild = {
+  raids = { { title = "Hyjal Summit", t = os.time() + 3600, mine = "Healer", going = 12, size = 20 }, { title = "Old raid", t = os.time() - 60 } },
+  quests = { [1002] = { "Party Member", "Asha Brightvale" } },
+}
 C_Reputation = {
   GetNumFactions = function() return 3 end,
   GetFactionDataByIndex = function(i)
@@ -79,8 +101,15 @@ local function fire(event, ...)
 end
 
 assert(loadfile(dir .. "/UwucrewSync.lua"))("UwucrewSync", {})
+assert(loadfile(dir .. "/GuildData.lua"), "the stub GuildData.lua the release ships must load")
 fire("ADDON_LOADED", "UwucrewSync")
 fire("PLAYER_LOGIN")
+assert(heard("next raid: .*Hyjal Summit.*Healer"), "login shows the next raid from the app's guild info")
+assert(not heard("Old raid"), "raids that already started are skipped")
+fire("TRADE_SKILL_SHOW")
+fire("QUEST_ACCEPTED", 7, 1002)
+assert(heard("also on this quest: .*Party Member"), "accepting a quest names guildmates on it")
+assert(not heard("also on this quest: .*Asha Brightvale"), "but not the player themself")
 fire("TIME_PLAYED_MSG", 86400, 3600)
 level = 29 -- UnitLevel lags behind during PLAYER_LEVEL_UP; the event arg is the truth
 fire("PLAYER_LEVEL_UP", 30)
@@ -90,12 +119,20 @@ SlashCmdList.UWUCREW("link not-a-code")
 assert(UwucrewSyncDB.link == nil, "bad link codes are rejected")
 SlashCmdList.UWUCREW("link " .. (os.getenv("UWU_LINK") or "uwusync-TestCode_Case-Sensitive"))
 assert(UwucrewSyncDB.link == (os.getenv("UWU_LINK") or "uwusync-TestCode_Case-Sensitive"), "link codes keep their case")
+SlashCmdList.UWUCREW("raids")
+assert(heard("Hyjal Summit.*12/20"), "/uwu raids lists upcoming raids")
+fire("PLAYER_DEAD") -- a Hardcore death
 SlashCmdList.UWUCREW("sync")
 fire("PLAYER_LOGOUT")
+local full = UwucrewSyncDB.exports["Asha Brightvale"]
+assert(full:find('"recipes":{"Tailoring":["Azure Silk Hood","Bolt of Silk Cloth"]}', 1, true), "the app's upload carries recipes")
+assert(full:find('"b":["Rage Winterchill","Anetheron"]', 1, true), "raid lockouts name the bosses killed")
+assert(full:find('"died":{', 1, true) and full:find('"hc":true', 1, true), "a Hardcore death is recorded")
+assert(not shown:find('"recipes"', 1, true), "recipes are left out of paste codes")
 assert(shown and #shown <= 3900, "paste code must fit a Discord modal, got " .. (shown and #shown or 0))
 assert(shown:find('"logMore":', 1, true) and shown:find('"log":[{', 1, true), "a full 40-quest log keeps as many quests as fit in the paste code")
 assert(UwucrewSyncDB.exports["Asha Brightvale"]:find("Gnoll Paw", 1, true), "the app's full upload keeps quest objectives")
-print(shown or "NO EXPORT")
+realPrint(shown or "NO EXPORT")
 
 -- Mimic WoW's SavedVariables writer (%q-quoted strings).
 local function ser(v, indent)

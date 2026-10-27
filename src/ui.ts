@@ -48,3 +48,6 @@ export function clip(lines: string[], max = 1000) {
 
 /** ▰▰▰▱▱ style bar. */
 export const bar = (frac: number, width = 10) => "▰".repeat(Math.round(frac * width)) + "▱".repeat(width - Math.round(frac * width));
+
+/** A DM from the guild. */
+export const dm = (text: string) => ({ embeds: [new EmbedBuilder().setColor(COLOR.brand).setAuthor({ name: "uwucrew", iconURL: icon("tabard") ?? undefined }).setDescription(text)] });

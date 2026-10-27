@@ -108,6 +108,71 @@ export async function upload(link: { url: string; token: string }, exports: stri
   return { status: "ok", results: (body.results ?? []).map((r: any) => ({ ok: !!r.ok, name: r.name, message: String(r.message ?? "").replace(/\*\*/g, "") })) };
 }
 
+// ---------- the guild, from the bot ----------
+
+export type GuildChar = {
+  name: string; class: string; race: string; role: string; level: number; levelAt: number; main: boolean; mine: boolean; owner: string;
+  ilvl: number | null; profs: { n: string; r: number }[]; syncedAt: number | null; hc: boolean; diedAt: number | null; quests: number[];
+};
+export type GuildEvent = {
+  id: number; title: string; description: string | null; startsAt: number; size: number | null; going: number; bench: number;
+  roles: Record<string, number>; names: string[]; mine: { status: string; role: string | null } | null;
+};
+export type Guild = {
+  chars: GuildChar[]; events: GuildEvent[]; recipes: Record<string, string[]>; raidsOpen: number;
+  progress: { raid: string; of: number; week: number; kills: { boss: string; at: number; char_name: string }[] }[];
+};
+
+async function api(link: { url: string; token: string }, method: string, path: string, body?: unknown) {
+  const res = await fetch(`${link.url}${path}`, {
+    method,
+    headers: { authorization: `Bearer ${link.token}`, "content-type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const json: any = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error ?? `The bot answered ${res.status}`);
+  return json;
+}
+
+export const fetchGuild = (link: { url: string; token: string }): Promise<Guild> => api(link, "GET", "/guild");
+export const signup = (link: { url: string; token: string }, event: number, action: string): Promise<{ ok: boolean; message: string }> =>
+  api(link, "POST", "/signup", { event, action });
+
+/** GuildData.lua for the addon: upcoming raids with your signup, and who's on which quest. */
+export function guildLua(g: Guild) {
+  const str = (s: string) => `"${s.replace(/[\\"]/g, "\\$&").replace(/[\x00-\x1f]/g, " ")}"`;
+  const raids = g.events.map((e) =>
+    `    { title = ${str(e.title)}, t = ${e.startsAt}, going = ${e.going}, size = ${e.size ?? "nil"}${e.mine?.status === "in" || e.mine?.status === "bench" ? `, mine = ${str(e.mine.role ?? e.mine.status)}` : ""} },`);
+  const byQuest = new Map<number, string[]>();
+  for (const c of g.chars) for (const q of c.quests) byQuest.set(q, [...(byQuest.get(q) ?? []), c.name]);
+  const quests = [...byQuest].sort(([a], [b]) => a - b).map(([q, names]) => `    [${q}] = { ${names.map(str).join(", ")} },`);
+  return [
+    "-- Written by the uwucrew Sync app. The game loads it on login or /reload.",
+    "UwucrewSyncGuild = {",
+    "  raids = {", ...raids, "  },",
+    "  quests = {", ...quests, "  },",
+    "}",
+    "",
+  ].join("\n");
+}
+
+/** Write GuildData.lua if the addon is installed and the content changed. Returns true if it wrote. */
+export function writeGuildFile(dir: string, g: Guild) {
+  const file = join(dir, GUILD_FILE);
+  const text = guildLua(g);
+  if (!existsSync(dir) || (existsSync(file) && readFileSync(file, "utf8") === text)) return false;
+  writeFileSync(file, text);
+  return true;
+}
+
+/** Wowhead's icon name for an item, e.g. "inv_sword_39". */
+export async function itemIcon(id: number) {
+  const res = await fetch(`https://nether.wowhead.com/forever/tooltip/item/${id}`, { signal: AbortSignal.timeout(15_000) });
+  const body: any = await res.json().catch(() => null);
+  return typeof body?.icon === "string" && /^[\w-]+$/.test(body.icon) ? body.icon : null;
+}
+
 // ---------- installing the addon ----------
 
 export const addonDir = (wowDir: string, game: string) => join(wowDir, game, "Interface", "AddOns", ADDON);
@@ -146,9 +211,14 @@ export async function fetchAddon(url = ADDON_URL) {
   return files;
 }
 
+/** The release ships this file empty; once it exists, it's the app's to rewrite, so updates leave it alone. */
+export const GUILD_FILE = "GuildData.lua";
+
 /** Files that are missing or different on disk. */
 export const addonChanges = (dir: string, files: Map<string, Buffer>) =>
-  [...files].filter(([rel, data]) => !existsSync(join(dir, rel)) || !readFileSync(join(dir, rel)).equals(data)).map(([rel]) => rel);
+  [...files]
+    .filter(([rel, data]) => !existsSync(join(dir, rel)) || (rel !== GUILD_FILE && !readFileSync(join(dir, rel)).equals(data)))
+    .map(([rel]) => rel);
 
 // ponytail: files dropped from a later release stay on disk; WoW only loads what the .toc lists.
 export function installAddon(dir: string, files: Map<string, Buffer>) {

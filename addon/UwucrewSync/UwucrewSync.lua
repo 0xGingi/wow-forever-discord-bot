@@ -1,9 +1,10 @@
 -- uwucrew Sync: snapshots your character for the uwucrew Discord bot.
 -- Addons can't reach the internet, so the data leaves the game two ways:
 --   /uwu sync         shows a code to paste into /sync paste in Discord
---   /uwu link <code>  ties this WoW account to your Discord account; the uwucrew-sync app then uploads
+--   /uwu link <code>  ties this WoW account to your Discord account; the uwucrew Sync app then uploads
 --                     this addon's saved file after every logout or /reload, for every character on the account
--- Every game API is looked up defensively: Forever is still in beta and functions come and go between builds.
+-- Guild info comes back in through GuildData.lua, which the app rewrites and the game loads on login or /reload.
+-- Every game API is looked up defensively: Forever is new and functions can change between patches.
 
 local ADDON = ...
 local VERSION = 1
@@ -84,7 +85,17 @@ local function lockouts()
   if not (GetNumSavedInstances and GetSavedInstanceInfo) then return list end
   for i = 1, GetNumSavedInstances() do
     local name, _, reset, _, locked, _, _, isRaid, _, _, total, done = GetSavedInstanceInfo(i)
-    if name and locked then list[#list + 1] = { n = name, raid = isRaid and true or false, k = done, of = total, reset = time() + (reset or 0) } end
+    if name and locked then
+      local entry = { n = name, raid = isRaid and true or false, k = done, of = total, reset = time() + (reset or 0) }
+      if isRaid and GetSavedInstanceEncounterInfo then -- which bosses, for the guild's first-kill announcements
+        entry.b = {}
+        for e = 1, total or 0 do
+          local boss, _, killed = GetSavedInstanceEncounterInfo(i, e)
+          if boss and killed then entry.b[#entry.b + 1] = boss end
+        end
+      end
+      list[#list + 1] = entry
+    end
   end
   return list
 end
@@ -145,6 +156,43 @@ local function questsDone()
   if C_QuestLog and C_QuestLog.GetAllCompletedQuestIDs then return #(C_QuestLog.GetAllCompletedQuestIDs() or {}) end
 end
 
+-- Recipes can only be read while a profession window is open, so each character's list is kept until it's opened again.
+local function recipes()
+  local prof, names = nil, {}
+  if C_TradeSkillUI and C_TradeSkillUI.GetAllRecipeIDs and C_TradeSkillUI.GetRecipeInfo then
+    if C_TradeSkillUI.IsTradeSkillLinked and C_TradeSkillUI.IsTradeSkillLinked() then return nil end -- someone else's
+    local info = C_TradeSkillUI.GetBaseProfessionInfo and C_TradeSkillUI.GetBaseProfessionInfo()
+    prof = info and info.professionName
+    for _, id in ipairs(C_TradeSkillUI.GetAllRecipeIDs() or {}) do
+      local r = C_TradeSkillUI.GetRecipeInfo(id)
+      if r and r.learned and r.name then names[#names + 1] = r.name end
+    end
+  elseif GetTradeSkillLine and GetNumTradeSkills and GetTradeSkillInfo then -- classic-style
+    prof = GetTradeSkillLine()
+    for i = 1, GetNumTradeSkills() do
+      local name, kind = GetTradeSkillInfo(i)
+      if name and kind ~= "header" and kind ~= "subheader" then names[#names + 1] = name end
+    end
+  end
+  if not prof or prof == "UNKNOWN" or #names == 0 then return nil end
+  table.sort(names)
+  return prof, names
+end
+
+local function crafts() -- classic Enchanting uses the separate Craft window
+  if not (GetCraftDisplaySkillLine and GetNumCrafts and GetCraftInfo) then return nil end
+  local prof, names = GetCraftDisplaySkillLine(), {}
+  for i = 1, GetNumCrafts() do
+    local name, _, kind = GetCraftInfo(i)
+    if name and kind ~= "header" then names[#names + 1] = name end
+  end
+  if not prof or #names == 0 then return nil end
+  table.sort(names)
+  return prof, names
+end
+
+local hardcore = function() return C_GameRules and C_GameRules.IsHardcoreActive and C_GameRules.IsHardcoreActive() or false end
+
 local ROLE = { TANK = "Tank", HEALER = "Healer", DAMAGER = "DPS" }
 local function role()
   if not (GetSpecialization and GetSpecializationRole) then return nil end
@@ -161,10 +209,15 @@ local function charKey()
   return first, surname
 end
 
-local function snapshot(levelOverride)
+local function currentKey()
   local first, surname = charKey()
-  if not first or not db then return nil end
-  local key = surname and (first .. " " .. surname) or first
+  if not first then return nil end
+  return surname and (first .. " " .. surname) or first, first, surname
+end
+
+local function snapshot(levelOverride)
+  local key, first, surname = currentKey()
+  if not key or not db then return nil end
   local _, classFile = UnitClass("player")
   local raceName, raceFile = UnitRace("player")
   local ilvl
@@ -177,6 +230,7 @@ local function snapshot(levelOverride)
     guild = known(GetGuildInfo("player")), money = GetMoney(), played = db.played[key],
     ilvl = ilvl and math.floor(ilvl + 0.5), quests = questsDone(),
     gear = gear(), profs = professions(), lockouts = lockouts(), reps = reputations(), log = questLog(),
+    recipes = db.recipes[key], hc = hardcore() or nil, died = db.deaths[key],
   }
   db.exports[key] = PREFIX .. encode(data) -- the app uploads this in full
   return data, key
@@ -184,7 +238,9 @@ end
 
 -- The paste code has to fit a Discord modal, so shed the least important detail until it does.
 local TRIMS = {
+  function(d) d.recipes = nil end, -- far too long for a paste code; the app uploads them
   function(d) for _, q in ipairs(d.log) do q.o = {} end end, -- quest objectives
+  function(d) for _, l in ipairs(d.lockouts) do l.b = nil end end, -- boss names
   function(d) d.reps = {} end,
   function(d) for _, item in ipairs(d.gear) do item.n = nil end end, -- item names (ids stay, the bot links them)
   function(d) for _, q in ipairs(d.log) do q.z = nil end end, -- quest zones
@@ -264,6 +320,38 @@ end
 
 ---------------------------------------------------------------- events
 
+---------------------------------------------------------------- guild info from the app
+
+local function say(text) print("|cffff69b4uwucrew|r: " .. text) end
+
+local guild = function() return type(UwucrewSyncGuild) == "table" and UwucrewSyncGuild or nil end
+
+local function upcomingRaids()
+  local list = {}
+  for _, r in ipairs((guild() or {}).raids or {}) do
+    if type(r) == "table" and r.t and r.t > time() then list[#list + 1] = r end
+  end
+  table.sort(list, function(a, b) return a.t < b.t end)
+  return list
+end
+
+local function raidLine(r)
+  local when = date("%a %b %d, %I:%M %p", r.t)
+  local status = r.mine and ("you're in as |cffffd100" .. r.mine .. "|r") or "|cff9d9d9dnot signed up|r"
+  return ("|cffffd100%s|r %s · %d/%s · %s"):format(r.title or "Raid", when, r.going or 0, r.size or "?", status)
+end
+
+-- Guildmates on a quest, leaving out whoever is playing.
+local function questmates(id)
+  local names, me = {}, currentKey()
+  for _, name in ipairs(((guild() or {}).quests or {})[id] or {}) do
+    if name ~= me then names[#names + 1] = name end
+  end
+  return names
+end
+
+---------------------------------------------------------------- events
+
 local pending = false
 local function snapshotSoon()
   -- Equipment and money events arrive in bursts; one snapshot after they settle is enough.
@@ -283,6 +371,27 @@ events:RegisterEvent("TIME_PLAYED_MSG")
 events:RegisterEvent("QUEST_LOG_UPDATE") -- accepted, progressed, abandoned
 events:RegisterEvent("QUEST_TURNED_IN")
 events:RegisterEvent("PLAYER_LOGOUT")
+events:RegisterEvent("QUEST_ACCEPTED")
+-- Not every client has these; registering an unknown event is an error, so try each one.
+for _, e in ipairs({ "TRADE_SKILL_SHOW", "TRADE_SKILL_UPDATE", "TRADE_SKILL_LIST_UPDATE", "CRAFT_SHOW", "CRAFT_UPDATE", "PLAYER_DEAD" }) do
+  pcall(events.RegisterEvent, events, e)
+end
+
+local recipesPending = false
+local function rememberRecipes(read)
+  if recipesPending then return end -- the window fires a burst of updates; read once they settle
+  recipesPending = true
+  C_Timer.After(1, function()
+    recipesPending = false
+    local key = currentKey()
+    local prof, names = read()
+    if key and db and prof then
+      db.recipes[key] = db.recipes[key] or {}
+      db.recipes[key][prof] = names
+    end
+  end)
+end
+
 events:SetScript("OnEvent", function(_, event, ...)
   if event == "ADDON_LOADED" then
     if ... ~= ADDON then return end
@@ -290,8 +399,29 @@ events:SetScript("OnEvent", function(_, event, ...)
     db = UwucrewSyncDB
     db.exports = db.exports or {}
     db.played = db.played or {}
+    db.recipes = db.recipes or {}
+    db.deaths = db.deaths or {}
   elseif event == "PLAYER_LOGIN" then
     if RequestRaidInfo then RequestRaidInfo() end -- fills lockouts, answered by UPDATE_INSTANCE_INFO
+    snapshotSoon()
+    C_Timer.After(8, function() -- after the login chat spam
+      local r = upcomingRaids()[1]
+      if r then say("next raid: " .. raidLine(r)) end
+    end)
+  elseif event == "TRADE_SKILL_SHOW" or event == "TRADE_SKILL_UPDATE" or event == "TRADE_SKILL_LIST_UPDATE" then
+    rememberRecipes(recipes)
+  elseif event == "CRAFT_SHOW" or event == "CRAFT_UPDATE" then
+    rememberRecipes(crafts)
+  elseif event == "PLAYER_DEAD" then
+    local key = currentKey()
+    if hardcore() and key and db and not db.deaths[key] then
+      db.deaths[key] = { t = time(), l = UnitLevel("player"), z = GetZoneText and known(GetZoneText()) or nil }
+      snapshot()
+    end
+  elseif event == "QUEST_ACCEPTED" then
+    local a, b = ...
+    local names = questmates(b or a) -- classic passes (logIndex, questID), newer clients just questID
+    if #names > 0 then say("also on this quest: |cffffd100" .. table.concat(names, ", ") .. "|r") end
     snapshotSoon()
   elseif event == "PLAYER_LEVEL_UP" then
     snapshot((...)) -- UnitLevel still reports the old level during this event
@@ -307,8 +437,6 @@ events:SetScript("OnEvent", function(_, event, ...)
 end)
 
 ---------------------------------------------------------------- slash command
-
-local function say(text) print("|cffff69b4uwucrew|r: " .. text) end
 
 SLASH_UWUCREW1 = "/uwu"
 SLASH_UWUCREW2 = "/uwucrew"
@@ -328,7 +456,20 @@ SlashCmdList.UWUCREW = function(msg)
   elseif cmd == "unlink" then
     db.link = nil
     say("unlinked. |cffffd100/reload|r to save.")
+  elseif cmd == "raids" then
+    local list = upcomingRaids()
+    if not guild() then return say("no guild info yet. It comes from the uwucrew Sync app; |cffffd100/reload|r after opening it.") end
+    if #list == 0 then return say("no raids scheduled.") end
+    for _, r in ipairs(list) do say(raidLine(r)) end
+  elseif cmd == "quests" then
+    if not guild() then return say("no guild info yet. It comes from the uwucrew Sync app; |cffffd100/reload|r after opening it.") end
+    local any = false
+    for _, q in ipairs(questLog()) do
+      local names = questmates(q.id)
+      if #names > 0 then any = true; say(("|cffffd100%s|r: %s"):format(q.n, table.concat(names, ", "))) end
+    end
+    if not any then say("no guildmates on your quests right now.") end
   else
-    say("|cffffd100/uwu sync|r shows your sync code · |cffffd100/uwu link <code>|r connects this WoW account to Discord · " .. (db and db.link and "|cff1eff00linked|r" or "|cff9d9d9dnot linked|r"))
+    say("|cffffd100/uwu sync|r shows your sync code · |cffffd100/uwu link <code>|r connects this WoW account to Discord · |cffffd100/uwu raids|r upcoming raids · |cffffd100/uwu quests|r guildmates on your quests · " .. (db and db.link and "|cff1eff00linked|r" or "|cff9d9d9dnot linked|r"))
   end
 end

@@ -1,0 +1,2 @@
+-- The uwucrew Sync app replaces this file with your guild's upcoming raids and who's on which quest.
+-- The game loads it on login or /reload. Without the app it stays empty, and the addon works the same.

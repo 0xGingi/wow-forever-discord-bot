@@ -3,9 +3,11 @@ import { db, getChar } from "./db.ts";
 import { extractExports, extractLink, type Snapshot } from "./savedvars.ts";
 import { applySync, newLinkCode, parseExport, profileEmbed, startSyncServer, userForToken } from "./sync.ts";
 import { questsEmbed } from "./quests.ts";
+import { crafterIndex } from "./guild.ts";
+import { progressEmbed, raidProgress } from "./progress.ts";
 
 const luajit = Bun.which("luajit");
-const fakeClient = { channels: { fetch: async () => null } } as any;
+const fakeClient = { channels: { fetch: async () => null }, users: { fetch: async () => ({ displayName: "Someone" }), send: async () => {} } } as any;
 
 /** Run the real addon under addon/test/harness.lua and return its SavedVariables file. */
 async function addonSavedVariables(link?: string) {
@@ -33,6 +35,12 @@ test.skipIf(!luajit)("addon output survives SavedVariables and lands in the rost
   const size = JSON.stringify(embed).length;
   expect(size).toBeLessThan(6000);
   expect(JSON.stringify(embed)).toContain("wowhead.com/forever/item=271766");
+
+  // Addon 1.2: boss kills, recipes and a Hardcore death come through too.
+  expect(r.firstKills).toEqual([{ raid: "Hyjal Summit", bosses: ["Rage Winterchill", "Anetheron"], down: 2, of: 5 }]);
+  expect(r.death).toMatchObject({ l: 30, z: "Wetlands" });
+  expect(getChar("Asha Brightvale")!.died_at).toBe(r.death!.t);
+  expect(crafterIndex().get("Azure Silk Hood")).toEqual([{ name: "Asha Brightvale", class: "Mage", user_id: "addon-user", prof: "Tailoring" }]);
 });
 
 const snap = (over: Partial<Snapshot> = {}): Snapshot => ({
@@ -119,5 +127,58 @@ test("companion endpoint: needs a link code, syncs, throttles", async () => {
   expect(getChar("Thalen Brightvale")!.user_id).toBe("app-user");
 
   expect((await post(linked.t, { exports: [] })).status).toBe(429);
+  server.stop(true);
+});
+
+test("raid progress: first kills announced once, a full clear called out, Hardcore deaths once", () => {
+  const lock = (b: string[]) => ({ n: "Barrow Deeps", raid: true, k: b.length, of: 3, reset: Date.now() / 1000 + 86400, b });
+  const t = Math.floor(Date.now() / 1000);
+  const a = applySync("raider-1", snap({ first: "Raider", last: "One", t, lockouts: [lock(["Gravelord"])] }));
+  const again = applySync("raider-2", snap({ first: "Raider", last: "Two", t, lockouts: [lock(["Gravelord", "Bonewhisper"])] }));
+  const done = applySync("raider-2", snap({ first: "Raider", last: "Two", t: t + 1, lockouts: [lock(["Gravelord", "Bonewhisper", "The Hollow King"])] }));
+  if ("error" in a || "error" in again || "error" in done) throw new Error("sync failed");
+  expect(a.firstKills).toEqual([{ raid: "Barrow Deeps", bosses: ["Gravelord"], down: 1, of: 3 }]);
+  expect(again.firstKills).toEqual([{ raid: "Barrow Deeps", bosses: ["Bonewhisper"], down: 2, of: 3 }]); // Gravelord wasn't new
+  expect(done.firstKills).toEqual([{ raid: "Barrow Deeps", bosses: ["The Hollow King"], down: 3, of: 3 }]);
+  const barrow = raidProgress().find((r) => r.raid === "Barrow Deeps")!;
+  expect(barrow).toMatchObject({ of: 3, week: 3 });
+  expect(barrow.kills.map((k) => [k.boss, k.char_name])).toEqual([["Gravelord", "Raider One"], ["Bonewhisper", "Raider Two"], ["The Hollow King", "Raider Two"]]);
+  expect(JSON.stringify(progressEmbed().toJSON())).toContain("Barrow Deeps · 3/3");
+
+  const died = { t, l: 41, z: "Badlands" };
+  const rip = applySync("hc-player", snap({ first: "Brave", last: "Soul", t, hc: true, died }));
+  const later = applySync("hc-player", snap({ first: "Brave", last: "Soul", t: t + 60, hc: true, died }));
+  if ("error" in rip || "error" in later) throw new Error("sync failed");
+  expect(rip.death).toEqual(died);
+  expect(later.death).toBeUndefined(); // announced only the first time
+});
+
+test("a paste code without recipes keeps the ones the app uploaded", () => {
+  const t = Math.floor(Date.now() / 1000);
+  applySync("crafty", snap({ first: "Crafty", last: "Hands", t, recipes: { Alchemy: ["Minor Healing Potion"] } }));
+  applySync("crafty", snap({ first: "Crafty", last: "Hands", t: t + 1 }));
+  expect(crafterIndex().get("Minor Healing Potion")?.map((c) => c.name)).toEqual(["Crafty Hands"]);
+  expect(parseExport(code(snap({ recipes: { Alchemy: [42] } } as any)))).toHaveProperty("error"); // recipes are validated
+});
+
+test("app endpoints: the guild feed hides Discord IDs, and raid signups behave like the buttons", async () => {
+  const server = startSyncServer(fakeClient, 0);
+  const token = JSON.parse(Buffer.from(newLinkCode("feed-user", "https://example.com").slice("uwusync-".length), "base64url").toString()).t;
+  const api = (method: string, path: string, body?: unknown) =>
+    fetch(`http://localhost:${server.port}${path}`, { method, headers: { authorization: `Bearer ${token}` }, body: body === undefined ? undefined : JSON.stringify(body) }).then((r) => r.json() as any);
+  applySync("feed-user", snap({ first: "Feed", last: "Reader", log: [{ id: 77, n: "Shared", c: false, o: [] }] }));
+  const ev = Number(db.run("insert into events (kind, title, starts_at, size, creator_id) values ('raid', 'Hyjal Summit', unixepoch() + 86400, 20, 'officer')").lastInsertRowid);
+
+  const feed = await api("GET", "/guild");
+  expect(feed.chars.find((c: any) => c.name === "Feed Reader")).toMatchObject({ mine: true, owner: "Feed Reader", quests: [77] });
+  expect(feed.chars.find((c: any) => c.name === "Asha Brightvale")?.mine).toBe(false);
+  expect(JSON.stringify(feed)).not.toContain("addon-user"); // Discord user IDs stay on the server
+  expect(feed.events.find((e: any) => e.id === ev)).toMatchObject({ title: "Hyjal Summit", going: 0, mine: null });
+
+  expect(await api("POST", "/signup", { event: ev, action: "Healer" })).toEqual({ ok: true, message: "You're in for Hyjal Summit as Healer." });
+  expect((await api("GET", "/guild")).events.find((e: any) => e.id === ev)).toMatchObject({ going: 1, roles: { Healer: 1 }, names: ["Feed Reader"], mine: { status: "in", role: "Healer" } });
+  expect(await api("POST", "/signup", { event: ev, action: "Healer" })).toEqual({ ok: true, message: "Withdrawn from Hyjal Summit." });
+  expect((await api("POST", "/signup", { event: ev, action: "Mage" })).ok).toBe(false);
+  expect((await fetch(`http://localhost:${server.port}/guild`)).status).toBe(401);
   server.stop(true);
 });

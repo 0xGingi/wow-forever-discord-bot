@@ -5,6 +5,7 @@ let tab = "chars";
 let selected = localStorage.getItem("char");
 let error = "";
 let draft = ""; // link code being typed
+let craftQuery = ""; // the Guild tab's "who can craft" search
 let deferred = false;
 let holding = false;
 let lastView = "";
@@ -24,6 +25,7 @@ const SLOTS = { 1: "Head", 2: "Neck", 3: "Shoulder", 5: "Chest", 6: "Waist", 7: 
   11: "Finger", 12: "Finger", 13: "Trinket", 14: "Trinket", 15: "Back", 16: "Main hand", 17: "Off hand", 18: "Ranged" };
 const DOLL = { left: [1, 2, 3, 15, 5, 9], right: [10, 6, 7, 8, 11, 12, 13, 14], weapons: [16, 17, 18] }; // the in-game paper doll's order
 const WOWHEAD = "https://www.wowhead.com/forever";
+const ICON_URL = (name) => `https://wow.zamimg.com/images/wow/icons/medium/${name}.jpg`;
 
 // Classic quest colours: red/orange above you, yellow around your level, green below, grey once it gives no XP.
 // ponytail: grey uses Classic's mob grey-level formula; Forever's exact quest ranges aren't published.
@@ -113,8 +115,8 @@ function topbar() {
   return `<header class="top">
     <div class="brand"><span class="mark">uwu</span><span class="brand-name">uwucrew Sync</span></div>
     <nav class="tabs" role="tablist">
-      <button role="tab" aria-selected="${tab === "chars"}" data-tab="chars">Characters</button>
-      <button role="tab" aria-selected="${tab === "settings"}" data-tab="settings">Settings</button>
+      ${[["chars", "Characters"], ["guild", "Guild"], ["raids", "Raids"], ["settings", "Settings"]]
+        .map(([id, label]) => `<button role="tab" aria-selected="${tab === id}" data-tab="${id}">${label}</button>`).join("")}
     </nav>
     <div class="status">
       <span class="state ${addonOk ? "" : "warn"}">${h(addonStatus())}</span>
@@ -164,8 +166,9 @@ function sheet({ a, c, sync }) {
       <div class="portrait">${img(raceIcon(c) || c.class, "face")}${img(c.class, "badge")}</div>
       <div>
         <h1>${h(charName(c))}</h1>
-        <p class="hero-line">Level ${num(c.level)} ${h(c.race)} <span class="cls">${h(cls)}</span>${c.role ? `<span class="role">${img(c.role)}${h(c.role)}</span>` : ""}</p>
+        <p class="hero-line">Level ${num(c.level)} ${h(c.race)} <span class="cls">${h(cls)}</span>${c.role ? `<span class="role">${img(c.role)}${h(c.role)}</span>` : ""}${c.hc ? `<span class="hc">Hardcore</span>` : ""}</p>
         ${c.guild ? `<p class="guild">&lt;${h(c.guild)}&gt;</p>` : ""}
+        ${c.died ? `<p class="died">Fell at level ${num(c.died.l)}${c.died.z ? ` in ${h(c.died.z)}` : ""}, ${rel(c.died.t * 1000)}.</p>` : ""}
       </div>
       <p class="hero-sync ${sync && !sync.ok ? "warn" : ""}">${syncLine(sync)}<br><span class="faint">Saved in game ${rel(c.t * 1000)}</span></p>
     </section>
@@ -186,8 +189,10 @@ function gear(c) {
   const bySlot = new Map((c.gear ?? []).map((g) => [g.s, g]));
   const slot = (s) => {
     const g = bySlot.get(s);
-    if (!g) return `<div class="item empty"><span class="item-name">Empty</span><span class="item-slot">${SLOTS[s]}</span></div>`;
+    if (!g) return `<div class="item empty"><span class="item-icon"></span><span class="item-name">Empty</span><span class="item-slot">${SLOTS[s]}</span></div>`;
+    const icon = S.icons?.[g.id];
     return `<a class="item" href="${WOWHEAD}/item=${Number(g.id)}" style="--q:${QUALITY[g.q ?? 1] ?? QUALITY[1]}">
+      ${icon ? `<img class="item-icon" src="${ICON_URL(icon)}" alt="">` : `<span class="item-icon"></span>`}
       <span class="item-name" title="${h(g.n)}">${h(g.n ?? `Item ${g.id}`)}</span><span class="item-slot">${SLOTS[s]}</span>${g.l ? `<span class="item-level" title="Item level">${num(g.l)}</span>` : ""}</a>`;
   };
   const col = (slots) => `<div>${slots.map(slot).join("")}</div>`;
@@ -222,18 +227,119 @@ function lockouts(c) {
   const list = (c.lockouts ?? []).filter((l) => l.reset * 1000 > Date.now());
   if (!list.length) return "";
   return panel("Saved instances", `<ul class="locks">${list.map((l) => `<li>${img(l.raid ? "raid" : "dungeon")}
-    <span class="lock-name">${h(l.n)}</span><span class="lock-progress">${num(l.k)} of ${num(l.of)} bosses</span><span class="lock-reset">Resets ${rel(l.reset * 1000)}</span></li>`).join("")}</ul>`);
+    <span class="lock-name">${h(l.n)}</span><span class="lock-progress">${num(l.k)} of ${num(l.of)} bosses${l.b?.length ? `: ${l.b.map(h).join(", ")}` : ""}</span><span class="lock-reset">Resets ${rel(l.reset * 1000)}</span></li>`).join("")}</ul>`);
 }
 
 function questLog(c) {
   if (!c.log) return "";
   if (!c.log.length) return panel("Quest log", `<p class="muted">No quests right now.</p>`);
   const zones = Map.groupBy(c.log, (q) => q.z || "Other");
+  const mates = (id) => (S.guild?.chars ?? []).filter((m) => m.name !== charName(c) && m.quests.includes(id)).map((m) => m.name);
   const quest = (q) => `<li class="quest">
     <a href="${WOWHEAD}/quest=${Number(q.id)}" style="color:${difficulty(q.l || c.level, c.level)}">${q.l ? `[${num(q.l)}] ` : ""}${h(q.n)}</a>${q.c ? `<span class="complete">Complete</span>` : ""}
-    ${q.o?.length ? `<ul class="objectives">${q.o.map((o) => `<li class="${o.d ? "met" : ""}">${o.d ? check : ""}${h(o.t)}</li>`).join("")}</ul>` : ""}</li>`;
+    ${q.o?.length ? `<ul class="objectives">${q.o.map((o) => `<li class="${o.d ? "met" : ""}">${o.d ? check : ""}${h(o.t)}</li>`).join("")}</ul>` : ""}
+    ${mates(q.id).length ? `<p class="mates">Also on this quest: ${mates(q.id).map(h).join(", ")}</p>` : ""}</li>`;
   return panel("Quest log", [...zones].map(([zone, quests]) => `<div class="zone"><h3>${h(zone)}</h3><ul>${quests.map(quest).join("")}</ul></div>`).join(""),
     `${c.log.length} quest${c.log.length === 1 ? "" : "s"}`);
+}
+
+// ---------- guild and raids (from the bot) ----------
+
+function noGuild() {
+  if (S.guildError) return `<div class="banner"><p>Couldn't load the guild: ${h(S.guildError)}</p><button class="btn" data-act="refreshGuild">Try again</button></div>`;
+  return `<section class="setup"><h1>Link your Discord account</h1>
+    <p class="lede">The Guild and Raids tabs come from the uwucrew bot. Run /sync link in Discord, then paste the code here.</p>${linkForm()}${errorLine()}</section>`;
+}
+
+const fullDate = (sec) => new Date(sec * 1000).toLocaleDateString([], { month: "short", day: "numeric" });
+const classColor = (cls) => classOf({ class: cls })[1];
+
+function guildTab() {
+  if (!S.guild) return noGuild();
+  return `<section class="guild-view">
+    <h1>uwucrew</h1>
+    <div class="columns">
+      <div class="col">${progressPanel(S.guild)}${craftPanel()}</div>
+      <div class="col">${racePanel(S.guild)}</div>
+    </div>
+    ${rosterPanel(S.guild)}
+  </section>`;
+}
+
+function progressPanel(g) {
+  if (!g.progress.length) return panel("Raid progress", `<p class="muted">Raids open ${fullDate(g.raidsOpen / 1000)} (${rel(g.raidsOpen)}). Boss kills show up here as people sync.</p>`);
+  return panel("Raid progress", g.progress.map((r) => {
+    const down = Math.max(r.kills.length, r.week); // older addons report counts but not boss names
+    const of = Math.max(r.of, down);
+    return `<div class="raid-progress">
+      <ul class="bars">${bar(h(r.raid), `${down} / ${of || "?"} bosses`, of ? down / of : 0, "var(--gold)")}</ul>
+      <ul class="kills">${r.kills.map((k) => `<li><span>${h(k.boss)}</span><span class="faint">${fullDate(k.at)}, ${h(k.char_name)}</span></li>`).join("")}</ul>
+      <p class="faint">Best this week: ${r.week} / ${of || "?"}</p></div>`;
+  }).join(""));
+}
+
+function racePanel(g) {
+  const top = g.chars.filter((c) => !c.diedAt).slice(0, 10);
+  if (!top.length) return panel("Race to 60", `<p class="muted">Nobody has synced a character yet.</p>`);
+  return panel("Race to 60", `<ol class="race">${top.map((c) => `<li style="--cls:${classColor(c.class)}">
+    ${img(c.class)}<span class="race-name">${h(c.name)}</span><span class="race-level">${c.level}</span>
+    <div class="bar"><div style="width:${(c.level / 60) * 100}%"></div></div></li>`).join("")}</ol>`);
+}
+
+function craftResults() {
+  const recipes = S.guild?.recipes ?? {};
+  const q = craftQuery.trim().toLowerCase();
+  if (!q) return `<p class="faint">${Object.keys(recipes).length} recipes known across the guild. Recipes sync when someone opens their profession window in game.</p>`;
+  const hits = Object.keys(recipes).filter((r) => r.toLowerCase().includes(q)).sort().slice(0, 12);
+  if (!hits.length) return `<p class="muted">Nobody has synced a recipe matching "${h(craftQuery)}".</p>`;
+  return `<ul class="crafts">${hits.map((r) => `<li><span class="craft-name">${h(r)}</span><span class="faint">${recipes[r].map(h).join(", ")}</span></li>`).join("")}</ul>`;
+}
+
+const craftPanel = () => panel("Who can craft it?",
+  `<input type="text" class="craft-search" value="${h(craftQuery)}" placeholder="Search recipes, e.g. Runecloth Bag" aria-label="Search recipes" spellcheck="false">
+   <div class="craft-results">${craftResults()}</div>`);
+
+function rosterPanel(g) {
+  const rows = g.chars.map((c) => `<tr class="${c.diedAt ? "dead" : ""}" style="--cls:${classColor(c.class)}">
+    <td><div class="who">${img(c.class)}<span><span class="roster-name">${h(c.name)}${c.diedAt ? " 💀" : ""}</span>${c.main ? "" : `<span class="faint">${h(c.owner)}'s alt</span>`}</span></div></td>
+    <td class="num">${c.level}</td>
+    <td>${c.role ? `${img(c.role)}${h(c.role)}` : ""}</td>
+    <td class="num">${c.ilvl ?? ""}</td>
+    <td class="profs">${c.profs.map((p) => `<span title="${h(p.n)} ${p.r}">${img(p.n)}${p.r}</span>`).join("")}</td>
+    <td class="faint">${c.syncedAt ? rel(c.syncedAt * 1000) : "never synced"}</td></tr>`).join("");
+  return panel("Roster", `<table class="roster-table"><thead><tr><th>Character</th><th>Level</th><th>Role</th><th>Item level</th><th>Professions</th><th>Last synced</th></tr></thead><tbody>${rows}</tbody></table>`,
+    `${g.chars.length} characters`);
+}
+
+const SIGNUP_LABELS = { in: "You're in", bench: "On the bench", tentative: "Tentative", absent: "Absent" };
+
+function raidsTab() {
+  if (!S.guild) return noGuild();
+  const events = S.guild.events;
+  return `<section class="raids">
+    <h1>Raids</h1>
+    ${errorLine()}
+    ${events.length ? events.map(raidCard).join("") : `<p class="muted">No raids scheduled. Officers post them with /event create in Discord, and they show up here.</p>`}
+  </section>`;
+}
+
+function raidCard(ev) {
+  const mine = ev.mine;
+  const chosen = (action) => !!mine && ((mine.role === action && ["in", "bench"].includes(mine.status)) || mine.status === action);
+  const button = (action, label) => `<button class="btn signup-btn ${chosen(action) ? "chosen" : ""}" aria-pressed="${chosen(action)}"
+    data-act="signup" data-event="${ev.id}" data-arg="${action}">${img(action)}${label}</button>`;
+  let status = "Not signed up";
+  if (mine) status = `${SIGNUP_LABELS[mine.status] ?? mine.status}${mine.role ? ` as ${h(mine.role)}` : ""}`;
+  const when = new Date(ev.startsAt * 1000).toLocaleString([], { weekday: "long", month: "long", day: "numeric", hour: "numeric", minute: "2-digit" });
+  return `<article class="panel raid">
+    <header><div><h2>${h(ev.title)}</h2><p class="muted">${when} (${rel(ev.startsAt * 1000)})</p></div>
+      <p class="raid-count"><strong>${ev.going}</strong>${ev.size ? ` / ${ev.size}` : ""} going</p></header>
+    ${ev.description ? `<p class="raid-desc">${h(ev.description)}</p>` : ""}
+    <p class="raid-roles">${["Tank", "Healer", "DPS"].map((r) => `<span>${img(r)}${ev.roles[r] ?? 0} ${r}</span>`).join("")}${ev.bench ? `<span>${img("bench")}${ev.bench} on the bench</span>` : ""}</p>
+    ${ev.names.length ? `<p class="faint raid-names">${ev.names.map(h).join(", ")}</p>` : ""}
+    <footer><span class="my-status ${mine ? "" : "warn"}">${status}</span>
+      <span class="signup-buttons">${button("Tank", "Tank")}${button("Healer", "Healer")}${button("DPS", "DPS")}${button("tentative", "Tentative")}${button("absent", "Absent")}</span></footer>
+  </article>`;
 }
 
 // ---------- setup and settings ----------
@@ -348,6 +454,8 @@ function render() {
   lastView = viewKey;
   let body = setup();
   if (tab === "settings") body = settings();
+  else if (tab === "guild") body = guildTab();
+  else if (tab === "raids") body = raidsTab();
   else if (current) body = sheet(current);
   $app.innerHTML = `${topbar()}<div class="shell">${roster(all, current)}<main class="sheet">${body}</main></div>`;
   document.querySelector(".sheet").scrollTop = scroll;
@@ -366,10 +474,16 @@ document.addEventListener("click", (e) => {
   if (t.matches("a[href]")) return void window.uwu.act("openExternal", t.href);
   if (t.dataset.tab) return (tab = t.dataset.tab), (error = ""), render();
   if (t.dataset.char) return localStorage.setItem("char", (selected = t.dataset.char)), (tab = "chars"), render();
-  act(t.dataset.act, t.dataset.arg);
+  act(t.dataset.act, t.dataset.event ? { event: Number(t.dataset.event), action: t.dataset.arg } : t.dataset.arg);
 });
 document.addEventListener("change", (e) => e.target.dataset?.act && act(e.target.dataset.act, e.target.type === "checkbox" ? e.target.checked : e.target.value));
-document.addEventListener("input", (e) => e.target.closest(".link-form") && (draft = e.target.value));
+document.addEventListener("input", (e) => {
+  if (e.target.closest(".link-form")) draft = e.target.value;
+  if (e.target.matches(".craft-search")) {
+    craftQuery = e.target.value;
+    document.querySelector(".craft-results").innerHTML = craftResults(); // live results without a full re-render (and lost focus)
+  }
+});
 document.addEventListener("submit", async (e) => {
   e.preventDefault();
   document.activeElement?.blur();

@@ -1,4 +1,6 @@
 import { Database } from "bun:sqlite";
+import { mkdirSync, readdirSync, rmSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 const SCHEMA = `
 create table if not exists users (
@@ -14,7 +16,8 @@ create table if not exists chars (
   role text not null,
   level integer not null default 1,
   is_main integer not null default 0,
-  level_at integer not null default (unixepoch())  -- when it reached its current level
+  level_at integer not null default (unixepoch()), -- when it reached its current level
+  died_at integer                                  -- Hardcore death, as the addon reported it
 );
 create table if not exists profs (
   char_id integer not null references chars(id) on delete cascade,
@@ -65,6 +68,13 @@ create table if not exists sync_tokens (
   user_id text primary key,
   hash text not null unique       -- sha256 of the companion app's token; the token itself is never stored
 );
+create table if not exists kills (
+  raid text not null,
+  boss text not null,
+  at integer not null default (unixepoch()),
+  char_name text not null,        -- whose sync showed the kill first
+  primary key (raid, boss)
+);
 create table if not exists loot (
   id integer primary key,
   char_name text not null,
@@ -99,12 +109,13 @@ export function migrate(target: Database) {
   want.close();
 }
 
-export const db = new Database(process.env.DB_PATH ?? "uwucrew.sqlite", { create: true, strict: true });
+const DB_PATH = process.env.DB_PATH ?? "uwucrew.sqlite";
+export const db = new Database(DB_PATH, { create: true, strict: true });
 db.run("pragma journal_mode = wal");
 db.run("pragma foreign_keys = on");
 migrate(db);
 
-export type Char = { id: number; user_id: string; name: string; class: string; race: string; role: string; level: number; is_main: number; level_at: number };
+export type Char = { id: number; user_id: string; name: string; class: string; race: string; role: string; level: number; is_main: number; level_at: number; died_at: number | null };
 export type Event = {
   id: number; kind: "raid" | "lfg"; title: string; description: string | null; starts_at: number; tz: string; size: number | null;
   creator_id: string; channel_id: string | null; message_id: string | null;
@@ -127,3 +138,27 @@ export const eventSignups = (id: number) =>
   db.query<Signup, [number]>("select s.*, c.class from signups s left join chars c on c.name = s.char_name where s.event_id = ? order by s.at").all(id);
 export const upcomingEvents = () =>
   db.query<Event, []>("select * from events where cancelled = 0 and kind = 'raid' and starts_at > unixepoch() - 43200 order by starts_at").all();
+
+/** Copy the database into `dir` once per day (uwucrew-YYYY-MM-DD.sqlite) and delete all but the newest `keep`. */
+export function backup(dir: string, keep = 7, day = new Date()) {
+  mkdirSync(dir, { recursive: true });
+  const name = `uwucrew-${day.toISOString().slice(0, 10)}.sqlite`;
+  const have = readdirSync(dir).filter((f) => /^uwucrew-\d{4}-\d\d-\d\d\.sqlite$/.test(f));
+  if (!have.includes(name)) db.run("vacuum into ?", [join(dir, name)]); // a consistent copy, even while the bot writes
+  for (const old of [...new Set([...have, name])].sort().slice(0, -keep)) rmSync(join(dir, old));
+}
+
+// ponytail: backups sit on the same disk/volume as the database; copy them elsewhere for real disaster recovery.
+export function startBackups() {
+  if (DB_PATH === ":memory:") return;
+  const dir = join(dirname(DB_PATH), "backups");
+  const run = () => {
+    try {
+      backup(dir);
+    } catch (err) {
+      console.error("Backup failed:", err);
+    }
+  };
+  run();
+  setInterval(run, 3600_000); // checks hourly, writes one file a day
+}

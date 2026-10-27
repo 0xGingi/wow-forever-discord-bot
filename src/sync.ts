@@ -5,9 +5,10 @@ import {
 } from "discord.js";
 import { db, getChar, userChars, type Char } from "./db.ts";
 import { CLASSES, formatCharName, PROFESSIONS, RACES, type ClassName } from "./game.ts";
-import { announceLevelUp, isFirstTo60, levelUpEmbed } from "./progress.ts";
+import { announce, deathEmbed, firstKillEmbed, isFirstTo60, levelUpEmbed, recordKills, type FirstKill } from "./progress.ts";
 import { fromBeta, PREFIX, type Snapshot } from "./savedvars.ts";
 import { bar, clip, COLOR, e, icon, notice } from "./ui.ts";
+import { appSignup, guildData } from "./guild.ts";
 
 const PUBLIC_URL = process.env.SYNC_PUBLIC_URL?.replace(/\/$/, "");
 const COMPANION_URL = process.env.COMPANION_URL;
@@ -18,6 +19,8 @@ const isNum = (v: unknown, min = 0, max = Number.MAX_SAFE_INTEGER): v is number 
 const isStr = (v: unknown, max = 100): v is string => typeof v === "string" && v.length > 0 && v.length <= max;
 const opt = (v: unknown, ok: (v: unknown) => boolean) => v === undefined || v === null || ok(v);
 const list = <T>(v: unknown, max: number, ok: (x: any) => boolean): v is T[] => Array.isArray(v) && v.length <= max && v.every(ok);
+const isRecord = (v: unknown, max: number, ok: (k: string, x: unknown) => boolean) =>
+  !!v && typeof v === "object" && !Array.isArray(v) && Object.keys(v).length <= max && Object.entries(v).every(([k, x]) => ok(k, x));
 
 export function parseExport(text: string): { snap: Snapshot } | { error: string } {
   const s = text.trim();
@@ -35,11 +38,15 @@ export function parseExport(text: string): { snap: Snapshot } | { error: string 
     ["xp", "xpMax", "money", "played", "ilvl", "quests"].every((k) => opt(d[k], (v) => isNum(v))) &&
     list(d.gear, 19, (g) => isNum(g?.s, 1, 19) && isNum(g?.id, 1) && opt(g?.n, (v) => isStr(v)) && opt(g?.q, (v) => isNum(v, 0, 9)) && opt(g?.l, (v) => isNum(v, 0, 1000))) &&
     list(d.profs, 15, (p) => isStr(p?.n, 40) && isNum(p?.r, 0, 1000) && isNum(p?.m, 0, 1000)) &&
-    list(d.lockouts, 50, (l) => isStr(l?.n) && typeof l?.raid === "boolean" && isNum(l?.k, 0, 100) && isNum(l?.of, 0, 100) && isNum(l?.reset)) &&
+    list(d.lockouts, 50, (l) => isStr(l?.n) && typeof l?.raid === "boolean" && isNum(l?.k, 0, 100) && isNum(l?.of, 0, 100) && isNum(l?.reset) &&
+      opt(l?.b, (v) => list(v, 40, (x) => isStr(x)))) &&
     list(d.reps, 20, (r) => isStr(r?.n) && isNum(r?.r, 1, 8) && isNum(r?.p, 0, 1e6) && isNum(r?.m, 0, 1e6)) &&
     opt(d.logMore, (v) => isNum(v, 0, 60)) &&
     opt(d.log, (v) => list(v, 60, (q) => isNum(q?.id, 1) && isStr(q?.n, 150) && opt(q?.l, (x) => isNum(x, 0, 100)) && opt(q?.z, (x) => isStr(x)) &&
-      typeof q?.c === "boolean" && list(q?.o, 12, (o) => isStr(o?.t, 200) && typeof o?.d === "boolean")));
+      typeof q?.c === "boolean" && list(q?.o, 12, (o) => isStr(o?.t, 200) && typeof o?.d === "boolean"))) &&
+    opt(d.recipes, (v) => isRecord(v, 15, (prof, names) => isStr(prof, 40) && list(names, 1000, (x) => isStr(x, 120)))) &&
+    opt(d.hc, (v) => typeof v === "boolean") &&
+    opt(d.died, (v: any) => isNum(v?.t) && isNum(v?.l, 1, 60) && opt(v?.z, (x) => isStr(x)));
   if (!valid) return { error: "That sync code doesn't look right. Make sure the uwucrew Sync addon is up to date, then try again." };
   if (fromBeta(d)) return { error: `**${d.first} ${d.last}** is a beta character. Beta characters don't carry over to launch, so it wasn't synced.` };
   return { snap: d as Snapshot };
@@ -51,7 +58,10 @@ const findRace = (s?: string) => (s ? RACES.find((r) => squash(r) === squash(s))
 
 // ---------- applying ----------
 
-type Applied = { char: Char; created: boolean; prevLevel: number | null; first60: boolean; unchanged?: boolean };
+type Applied = {
+  char: Char; created: boolean; prevLevel: number | null; first60: boolean; unchanged?: boolean;
+  firstKills?: FirstKill[]; death?: NonNullable<Snapshot["died"]>;
+};
 
 export function applySync(userId: string, snap: Snapshot): Applied | { error: string } {
   const name = formatCharName(snap.first, snap.last);
@@ -61,8 +71,10 @@ export function applySync(userId: string, snap: Snapshot): Applied | { error: st
   const existing = getChar(name);
   if (existing && existing.user_id !== userId) return { error: `**${name}** is registered to someone else. Ask an officer if that's wrong.` };
 
-  const prev = existing && db.query<{ data: string }, [number]>("select data from synced where char_id = ?").get(existing.id);
-  if (existing && prev && (JSON.parse(prev.data) as Snapshot).t >= snap.t) return { char: existing, created: false, prevLevel: existing.level, first60: false, unchanged: true };
+  const prevRow = existing && db.query<{ data: string }, [number]>("select data from synced where char_id = ?").get(existing.id);
+  const prev = prevRow ? (JSON.parse(prevRow.data) as Snapshot) : null;
+  if (existing && prev && prev.t >= snap.t) return { char: existing, created: false, prevLevel: existing.level, first60: false, unchanged: true };
+  if (!snap.recipes && prev?.recipes) snap = { ...snap, recipes: prev.recipes }; // paste codes leave recipes out
 
   const race = findRace(snap.race) ?? findRace(RACE_FILES[snap.raceFile ?? ""] ?? snap.raceFile) ?? existing?.race ?? snap.race ?? "Unknown";
   const role = ["Tank", "Healer", "DPS"].includes(snap.role ?? "") ? snap.role! : (existing?.role ?? "DPS");
@@ -87,8 +99,10 @@ export function applySync(userId: string, snap: Snapshot): Applied | { error: st
     }
     db.run("insert into synced values (?, ?, unixepoch()) on conflict do update set data = excluded.data, synced_at = excluded.synced_at",
       [id, JSON.stringify(snap)]);
+    if (snap.died) db.run("update chars set died_at = ? where id = ? and died_at is null", [snap.died.t, id]);
   })();
-  return { char: getChar(name)!, created: !existing, prevLevel: existing?.level ?? null, first60 };
+  const death = snap.died && !existing?.died_at ? snap.died : undefined;
+  return { char: getChar(name)!, created: !existing, prevLevel: existing?.level ?? null, first60, firstKills: recordKills(name, snap), death };
 }
 
 /** Parse, apply and announce one code. Shared by /sync paste and the desktop app endpoint. */
@@ -98,7 +112,9 @@ export async function syncCode(client: Client, userId: string, text: string, fal
   const r = applySync(userId, parsed.snap);
   if ("error" in r) return { ok: false as const, message: r.error };
   if (r.prevLevel !== null && r.char.level > r.prevLevel)
-    await announceLevelUp(client, levelUpEmbed(r.char, r.char.level, `<@${userId}>`, r.first60), fallbackChannelId).catch(console.error);
+    await announce(client, levelUpEmbed(r.char, r.char.level, `<@${userId}>`, r.first60), fallbackChannelId).catch(console.error);
+  if (r.death) await announce(client, deathEmbed(r.char, r.death), fallbackChannelId).catch(console.error);
+  for (const k of r.firstKills ?? []) await announce(client, firstKillEmbed(r.char, k), fallbackChannelId).catch(console.error);
   let what = "synced";
   if (r.created) what = "registered and synced";
   if (r.unchanged) what = "already up to date";
@@ -127,20 +143,25 @@ export function startSyncServer(client: Client, port = Number(process.env.SYNC_P
     async fetch(req) {
       const path = new URL(req.url).pathname;
       if (path === "/health") return new Response("ok");
-      if (req.method !== "POST" || path !== "/sync") return new Response("Not found", { status: 404 });
+      const route = `${req.method} ${path}`;
+      if (!["POST /sync", "GET /guild", "POST /signup"].includes(route)) return new Response("Not found", { status: 404 });
       const userId = userForToken(req.headers.get("authorization")?.replace(/^Bearer\s+/i, ""));
       if (!userId) return Response.json({ error: "This app isn't linked. Run /sync link in Discord and paste the new code." }, { status: 401 });
-      // ponytail: in-memory per-user throttle; fine for one bot process.
-      if (Date.now() - (lastUpload.get(userId) ?? 0) < 3000) return Response.json({ error: "Slow down a little." }, { status: 429 });
-      lastUpload.set(userId, Date.now());
+      if (route === "GET /guild") return Response.json(guildData(userId));
+
       const raw = await req.text();
-      if (raw.length > 512_000) return Response.json({ error: "Upload too large." }, { status: 413 });
+      if (raw.length > 2_000_000) return Response.json({ error: "Upload too large." }, { status: 413 }); // recipe lists make uploads bigger
       let body: any;
       try {
         body = JSON.parse(raw);
       } catch {
         return Response.json({ error: "Expected JSON." }, { status: 400 });
       }
+      if (route === "POST /signup") return Response.json(await appSignup(client, userId, Number(body?.event), String(body?.action)));
+
+      // ponytail: in-memory per-user throttle; fine for one bot process.
+      if (Date.now() - (lastUpload.get(userId) ?? 0) < 3000) return Response.json({ error: "Slow down a little." }, { status: 429 });
+      lastUpload.set(userId, Date.now());
       if (!Array.isArray(body?.exports)) return Response.json({ error: "Expected { exports: [...] }." }, { status: 400 });
       const results = [];
       for (const code of body.exports.slice(0, 50)) results.push(await syncCode(client, userId, String(code)));

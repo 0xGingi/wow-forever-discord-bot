@@ -45,6 +45,10 @@ const accounts = new Map<string, AccountState>();
 const activity: { at: number; ok: boolean; text: string }[] = [];
 const addon = { installed: null as string | null, latest: null as string | null, outdated: false, busy: false, error: null as string | null, checkedAt: 0 };
 let updateReady: string | null = null; // a downloaded app version waiting for a restart
+let guild: core.Guild | null = null; // the guild feed from the bot, for the Guild and Raids tabs
+let guildError: string | null = null;
+const ICONS = join(app.getPath("userData"), "icons.json");
+const icons: Record<number, string | null> = readJson(ICONS) ?? {}; // item id -> Wowhead icon name, null if Wowhead has none
 
 /** Which link uploads this account: its own from /uwu link in game, else the one pasted into the app. */
 function linkedBy(a: { link: string | null }) {
@@ -66,6 +70,9 @@ const view = () => ({
   addon,
   activity: activity.slice(0, 40),
   updateReady,
+  guild,
+  guildError,
+  icons,
   accounts: [...accounts.values()].filter((a) => a.chars.length).map(({ exports, ...a }) => ({ ...a, linkedBy: linkedBy(a) })),
 });
 
@@ -107,6 +114,7 @@ async function syncAccount(a: AccountState) {
     if (c) a.synced[[c.first, c.last].filter(Boolean).join(" ")] = { ...res, at: Date.now() };
     note(res.message, res.ok);
   });
+  lastGuild = 0; // fresh levels for the Guild tab
   const failed = r.results.filter((x) => !x.ok).length;
   setStatus(a, !failed, failed ? `${failed} of ${r.results.length} characters didn't sync.` : `Synced ${r.results.length} character${r.results.length === 1 ? "" : "s"}.`);
   return true;
@@ -133,7 +141,11 @@ async function tick() {
     if (await syncAccount(a)) uploaded.set(file, mtime);
     changed = true;
   }
-  if (changed) push();
+  if (changed) {
+    push();
+    fetchIcons();
+  }
+  if (Date.now() - lastGuild > 5 * 60_000) refreshGuild();
 }
 
 let running: Promise<void> | null = null;
@@ -147,6 +159,49 @@ function wowChanged() {
   accounts.clear();
   syncNow();
   checkAddon();
+}
+
+// ---------- the guild ----------
+
+let lastGuild = 0;
+/** Any link this PC has: the one pasted into the app, else one from /uwu link in game. Every link belongs to a guild member. */
+const anyLink = () => core.decodeLink(cfg.link ?? [...accounts.values()].find((a) => a.link)?.link ?? "");
+
+async function refreshGuild() {
+  lastGuild = Date.now();
+  const link = anyLink();
+  if (!link) {
+    guild = null;
+    return push();
+  }
+  try {
+    guild = await core.fetchGuild(link);
+    guildError = null;
+    const g = game();
+    if (cfg.wowDir && g) core.writeGuildFile(core.addonDir(cfg.wowDir, g), guild); // the addon picks it up on the next /reload
+  } catch (err) {
+    guildError = (err as Error).message;
+  }
+  push();
+}
+
+let fetchingIcons = false;
+async function fetchIcons() {
+  if (fetchingIcons) return;
+  fetchingIcons = true;
+  const wanted = new Set([...accounts.values()].flatMap((a) => a.chars.flatMap((c) => c.gear.map((g) => g.id))));
+  let found = false;
+  for (const id of wanted) {
+    if (id in icons) continue;
+    try {
+      icons[id] = await core.itemIcon(id);
+      found = true;
+    } catch {} // offline: left out, so it's tried again next time
+  }
+  fetchingIcons = false;
+  if (!found) return;
+  writeFileSync(ICONS, JSON.stringify(icons));
+  push();
 }
 
 // ---------- the addon ----------
@@ -299,6 +354,7 @@ ipcMain.handle("act", async (_e, name: string, arg: unknown): Promise<string | n
       save();
       if (code) note("Saved your Discord link.");
       syncNow();
+      refreshGuild();
       break;
     }
     case "installAddon":
@@ -322,6 +378,23 @@ ipcMain.handle("act", async (_e, name: string, arg: unknown): Promise<string | n
       break;
     case "installUpdate":
       installUpdate();
+      break;
+    case "signup": {
+      const link = anyLink();
+      const { event, action } = (arg ?? {}) as { event?: number; action?: string };
+      if (!link) return "Link your Discord account first, in Settings.";
+      try {
+        const r = await core.signup(link, Number(event), String(action));
+        if (!r.ok) return r.message;
+        note(r.message);
+      } catch (err) {
+        return `Couldn't sign up: ${(err as Error).message}`;
+      }
+      await refreshGuild();
+      break;
+    }
+    case "refreshGuild":
+      await refreshGuild();
       break;
   }
   push();

@@ -4,13 +4,14 @@ import {
   type AutocompleteInteraction, type ButtonInteraction, type ChatInputCommandInteraction, type ModalSubmitInteraction,
 } from "discord.js";
 import { db, eventSignups, getChar, getEvent, getTz, setTz, upcomingEvents, userChars, type Char } from "./db.ts";
-import { isFull, postEvent, refreshEventMessage, renderEvent, slotBlocked, toPromote } from "./events.ts";
+import { dmPromoted, postEvent, refreshEventMessage, renderEvent, signUp } from "./events.ts";
 import { fmtTime, parseWhen, whenChoices, ZONES, zoneChoices } from "./time.ts";
 import { syncGroup } from "./groups.ts";
 import { formatCharName, CLASSES, DUNGEONS, findInstance, instanceLabel, LAUNCH, PROFESSIONS, RACES, RAIDS, RAIDS_OPEN, ROLES, type ClassName, type Role } from "./game.ts";
-import { bar, clip, COLOR, e, emojiId, icon, notice } from "./ui.ts";
+import { bar, clip, COLOR, dm, e, emojiId, icon, notice } from "./ui.ts";
 import { cmd, definition as helpDefinition, help } from "./help.ts";
-import { announceLevelUp, isFirstTo60, levelUpEmbed, PROGRESS_CHANNEL_ID } from "./progress.ts";
+import { announce, isFirstTo60, levelUpEmbed, progressEmbed, PROGRESS_CHANNEL_ID } from "./progress.ts";
+import { crafterIndex } from "./guild.ts";
 import { profileEmbed, sync, definition as syncDefinition } from "./sync.ts";
 import { quests, definition as questsDefinition } from "./quests.ts";
 
@@ -23,7 +24,7 @@ const isOfficer = (i: { memberPermissions: Readonly<{ has(p: bigint): boolean }>
   !!i.memberPermissions?.has(PermissionFlagsBits.ManageEvents);
 const classColor = (c: string) => CLASSES[c as ClassName] ?? COLOR.brand;
 const fmtChar = (c: Char) => `${e(c.class)} **${c.name}** · ${c.level} ${c.race} ${c.class} ${e(c.role)}`;
-const dm = (text: string) => ({ embeds: [new EmbedBuilder().setColor(COLOR.brand).setAuthor({ name: "uwucrew", iconURL: icon("tabard") ?? undefined }).setDescription(text)] });
+
 const withEmoji = (b: ButtonBuilder, name: string) => (emojiId(name) ? b.setEmoji({ id: emojiId(name)! }) : b);
 
 // ---------- definitions ----------
@@ -63,6 +64,11 @@ export const definitions = [
 
   new SlashCommandBuilder().setName("crafters").setDescription("Who has a profession")
     .addStringOption((o) => o.setName("profession").setDescription("Profession").setRequired(true).addChoices(...choices(PROFESSIONS))),
+
+  new SlashCommandBuilder().setName("craft").setDescription("Who can craft an item (from recipes synced by the addon)")
+    .addStringOption((o) => o.setName("item").setDescription("Item or recipe name").setRequired(true).setAutocomplete(true).setMaxLength(120)),
+
+  new SlashCommandBuilder().setName("progress").setDescription("Raid progress: bosses down, first kills and this week's best"),
 
   new SlashCommandBuilder().setName("event").setDescription("Raid / event scheduling (officers)")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageEvents)
@@ -188,7 +194,7 @@ async function ding(i: Cmd) {
   db.run("update chars set level = ?, level_at = unixepoch() where id = ?", [level, c.id]);
   const embed = levelUpEmbed(c, level, `${i.user}`, first60);
   if (!PROGRESS_CHANNEL_ID || PROGRESS_CHANNEL_ID === i.channelId) return i.reply({ embeds: [embed] });
-  const posted = await announceLevelUp(i.client, embed);
+  const posted = await announce(i.client, embed);
   return i.reply(posted ? notice("ok", `Level ${level} saved and announced in <#${posted}>.`) : { embeds: [embed] });
 }
 
@@ -196,7 +202,7 @@ async function leaderboard(i: Cmd) {
   const chars = db.query<Char, []>("select * from chars order by level desc, level_at asc limit 15").all();
   const rank = (n: number) => e(["gold", "silver", "copper"][n] ?? "") || `\`#${n + 1}\``;
   const lines = chars.map((c, n) =>
-    `${rank(n)} ${e(c.class)} **${c.name}** \`${String(c.level).padStart(2)}\` ${bar(c.level / 60, 8)}${c.level === 60 ? ` · hit 60 <t:${c.level_at}:R>` : ""}`);
+    `${rank(n)} ${e(c.class)} **${c.name}** \`${String(c.level).padStart(2)}\` ${bar(c.level / 60, 8)}${c.level === 60 ? ` · hit 60 <t:${c.level_at}:R>` : ""}${c.died_at ? " 💀" : ""}`);
   return i.reply({
     embeds: [new EmbedBuilder()
       .setAuthor({ name: "Race to 60", iconURL: icon("level60") ?? undefined })
@@ -239,6 +245,22 @@ async function crafters(i: Cmd) {
         : `Nobody has ${prof} yet. Add yours with \`/char prof\`.`)],
   });
 }
+
+async function craft(i: Cmd) {
+  const q = i.options.getString("item", true).trim();
+  const index = crafterIndex();
+  const exact = index.has(q) ? [q] : [];
+  const recipes = exact.length ? exact : [...index.keys()].filter((r) => r.toLowerCase().includes(q.toLowerCase())).sort().slice(0, 8);
+  if (!recipes.length) return i.reply(notice("info", `Nobody has synced a recipe matching **${q}** yet.`, "Recipes sync when someone opens their profession window in game with the uwucrew Sync addon."));
+  const embed = new EmbedBuilder().setAuthor({ name: `Who can craft "${q}"`, iconURL: icon("note") ?? undefined }).setColor(COLOR.rare);
+  for (const r of recipes) {
+    const who = index.get(r)!;
+    embed.addFields({ name: `${e(who[0]!.prof)} ${r}`, value: clip(who.map((c) => `${e(c.class)} **${c.name}** <@${c.user_id}>`), 1024) });
+  }
+  return i.reply({ embeds: [embed] });
+}
+
+const progress = (i: Cmd) => i.reply({ embeds: [progressEmbed()] });
 
 async function event(i: Cmd) {
   if (i.options.getSubcommand() === "cancel") {
@@ -442,7 +464,7 @@ async function forever(i: Cmd) {
   });
 }
 
-export const commands: Record<string, (i: Cmd) => Promise<unknown>> = { char, ding, leaderboard, roster, crafters, event, lfg, sr, loot, attendance, apply, rolepanel, timezone, forever, help, sync, quests };
+export const commands: Record<string, (i: Cmd) => Promise<unknown>> = { char, ding, leaderboard, roster, crafters, craft, progress, event, lfg, sr, loot, attendance, apply, rolepanel, timezone, forever, help, sync, quests };
 
 // ---------- autocomplete ----------
 
@@ -456,6 +478,7 @@ export async function autocomplete(i: AutocompleteInteraction) {
   const tz = getTz(i.user.id) ?? "UTC";
   if (f.name === "event") return match(upcomingEvents().map((e) => ({ name: `#${e.id} ${e.title} · ${fmtTime(e.starts_at, tz)}`.slice(0, 100), value: e.id })));
   if (f.name === "dungeon") return match(DUNGEONS.map((d) => ({ name: instanceLabel(d), value: d.name })));
+  if (f.name === "item") return match([...crafterIndex()].map(([r, who]) => ({ name: `${r} (${who.length})`.slice(0, 100), value: r.slice(0, 100) })));
   if (f.name === "title") return match([...RAIDS, ...DUNGEONS].map((x) => ({ name: instanceLabel(x).slice(0, 100), value: x.name })));
   if (f.name === "name") {
     const all = ["loot", "quests"].includes(i.commandName) || i.options.getSubcommand(false) === "view" || isOfficer(i);
@@ -473,38 +496,14 @@ const displayChar = (i: { user: { id: string; displayName: string }; member: unk
 export async function eventButton(i: ButtonInteraction, id: number, action: string) {
   const ev = getEvent(id);
   if (!ev || ev.cancelled) return i.reply(notice("err", "This event is no longer active."));
-  const before = eventSignups(id);
-  const mine = before.find((s) => s.user_id === i.user.id);
-  const isRole = (ROLES as readonly string[]).includes(action);
-  const role = isRole ? action : null;
-  const same = mine && (isRole ? mine.role === role && ["in", "bench"].includes(mine.status) : mine.status === action);
-  let benched = false;
-
-  if (action === "leave" || same) {
-    db.run("delete from signups where event_id = ? and user_id = ?", [id, i.user.id]);
-  } else {
-    const blocked = isRole && slotBlocked(ev, before, i.user.id, action as Role);
-    if (blocked) return i.reply(notice("err", blocked));
-    benched = isRole && isFull(ev, before, i.user.id);
-    let status = action;
-    if (isRole) status = benched ? "bench" : "in";
-    db.run(
-      `insert into signups (event_id, user_id, status, role, char_name) values (?, ?, ?, ?, ?)
-       on conflict do update set status = excluded.status, role = excluded.role, char_name = excluded.char_name, at = unixepoch()`,
-      [id, i.user.id, status, role, displayChar(i)],
-    );
-  }
-  const promoted = toPromote(ev, eventSignups(id));
-  for (const s of promoted) db.run("update signups set status = 'in' where event_id = ? and user_id = ?", [id, s.user_id]);
-  const signups = eventSignups(id);
-  if (ev.kind === "lfg" && !signups.length) db.run("update events set cancelled = 1 where id = ?", [id]); // last one out; cleanup deletes channels
-  await i.update(renderEvent(getEvent(id)!, signups));
+  const r = signUp(ev, i.user.id, action, displayChar(i));
+  if ("error" in r) return i.reply(notice("err", r.error));
+  await i.update(renderEvent(getEvent(id)!, r.signups));
   await syncGroup(i.client, id).catch(console.error);
-  if (benched) await i.followUp(notice("info", `The raid is full, so you're on the ${e("bench")} **bench** as ${e(role!)} ${role}.`, "You'll be moved in and DM'd if a spot opens."));
-  for (const s of promoted)
-    await i.client.users.send(s.user_id, dm(`${e("done")} A spot opened in **${ev.title}** (<t:${ev.starts_at}:F>).\nYou're in as ${e(s.role ?? "")} **${s.role}**!`)).catch(() => {});
-  const going = signups.filter((s) => s.status === "in");
-  if (ev.kind === "lfg" && going.length === 5 && isRole)
+  if (r.benched) await i.followUp(notice("info", `The raid is full, so you're on the ${e("bench")} **bench** as ${e(r.role!)} ${r.role}.`, "You'll be moved in and DM'd if a spot opens."));
+  await dmPromoted(i.client, ev, r.promoted);
+  const going = r.signups.filter((s) => s.status === "in");
+  if (ev.kind === "lfg" && going.length === 5 && r.role)
     await i.followUp(`${e("lfg")} **Group ready for ${ev.title.replace("LFG: ", "")}!** ${going.map((s) => `<@${s.user_id}>`).join(" ")}`);
 }
 

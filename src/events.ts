@@ -6,7 +6,7 @@ import { db, eventSignups, getEvent, type Event, type Signup } from "./db.ts";
 import { CLASSES, ROLES, type Role } from "./game.ts";
 import { createGroup } from "./groups.ts";
 import { addDaysLocal } from "./time.ts";
-import { clip, COLOR, e, emojiId, icon } from "./ui.ts";
+import { clip, COLOR, dm, e, emojiId, icon } from "./ui.ts";
 
 const LFG_CAPS: Record<Role, number> = { Tank: 1, Healer: 1, DPS: 3 };
 const RAID_HOURS = 3; // length shown on Discord's native event
@@ -25,6 +25,43 @@ export function toPromote(ev: Pick<Event, "size">, signups: Signup[]) {
   if (!ev.size) return [];
   const open = ev.size - signups.filter((s) => s.status === "in").length;
   return signups.filter((s) => s.status === "bench").slice(0, Math.max(0, open));
+}
+
+export type SignupResult = { error: string } | { benched: boolean; promoted: Signup[]; signups: Signup[]; role: Role | null };
+
+/** A signup press: a role, "tentative", "absent" or "leave". Pressing your current choice again withdraws. Discord buttons and the app share this. */
+export function signUp(ev: Event, userId: string, action: string, charName: string): SignupResult {
+  const before = eventSignups(ev.id);
+  const mine = before.find((s) => s.user_id === userId);
+  const role = (ROLES as readonly string[]).includes(action) ? (action as Role) : null;
+  const same = mine && (role ? mine.role === role && ["in", "bench"].includes(mine.status) : mine.status === action);
+  let benched = false;
+
+  if (action === "leave" || same) {
+    db.run("delete from signups where event_id = ? and user_id = ?", [ev.id, userId]);
+  } else {
+    const blocked = role && slotBlocked(ev, before, userId, role);
+    if (blocked) return { error: blocked };
+    benched = !!role && isFull(ev, before, userId);
+    let status = action;
+    if (role) status = benched ? "bench" : "in";
+    db.run(
+      `insert into signups (event_id, user_id, status, role, char_name) values (?, ?, ?, ?, ?)
+       on conflict do update set status = excluded.status, role = excluded.role, char_name = excluded.char_name, at = unixepoch()`,
+      [ev.id, userId, status, role, charName],
+    );
+  }
+  const promoted = toPromote(ev, eventSignups(ev.id));
+  for (const s of promoted) db.run("update signups set status = 'in' where event_id = ? and user_id = ?", [ev.id, s.user_id]);
+  const signups = eventSignups(ev.id);
+  if (ev.kind === "lfg" && !signups.length) db.run("update events set cancelled = 1 where id = ?", [ev.id]); // last one out; cleanup deletes channels
+  return { benched, promoted, signups, role };
+}
+
+/** Tell people moved off the bench that they're in. */
+export async function dmPromoted(client: Client, ev: Pick<Event, "title" | "starts_at">, promoted: Pick<Signup, "user_id" | "role">[]) {
+  for (const s of promoted)
+    await client.users.send(s.user_id, dm(`${e("done")} A spot opened in **${ev.title}** (<t:${ev.starts_at}:F>).\nYou're in as ${e(s.role ?? "")} **${s.role}**!`)).catch(() => {});
 }
 
 const PLURAL: Record<Role, string> = { Tank: "Tanks", Healer: "Healers", DPS: "DPS" };
