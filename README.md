@@ -22,7 +22,7 @@ Discord bot for **uwucrew**, a World of Warcraft: Forever guild.
 | `/rolepanel` | *(Manage Roles)* Posts a panel in the current channel: **Join uwucrew** (gives the member role) and toggles for the Tank/Healer/DPS Discord roles, which it creates if missing |
 | `/apply` | Application form → officer channel with Accept/Decline (accept grants the member role + DMs them) |
 | `/timezone` | Set your timezone once. Search by city (`london`) or by what your clock says right now (`8:15 pm`) |
-| `/forever` | Beta end / launch / raid dates, new dungeons and raids |
+| `/forever` | Launch and raid dates, new dungeons and raids |
 
 **Group channels:** `/lfg` and `/event create` each get a private text channel and voice channel (turn off with `channels:false`). Only the organizer and people signed up can see them, and access updates as people join or leave. The channels are deleted `GROUP_TTL_HOURS` after the start time, once voice is empty. They're deleted right away if the event is cancelled or everyone leaves an LFG group. Set `GROUP_CATEGORY_ID` to keep them under one category.
 

@@ -7,7 +7,7 @@ import { db, eventSignups, getChar, getEvent, getTz, setTz, upcomingEvents, user
 import { isFull, postEvent, refreshEventMessage, renderEvent, slotBlocked, toPromote } from "./events.ts";
 import { fmtTime, parseWhen, whenChoices, ZONES, zoneChoices } from "./time.ts";
 import { syncGroup } from "./groups.ts";
-import { BETA_END, formatCharName, CLASSES, DUNGEONS, findInstance, instanceLabel, LAUNCH, PROFESSIONS, RACES, RAIDS, RAIDS_OPEN, ROLES, type ClassName, type Role } from "./game.ts";
+import { formatCharName, CLASSES, DUNGEONS, findInstance, instanceLabel, LAUNCH, PROFESSIONS, RACES, RAIDS, RAIDS_OPEN, ROLES, type ClassName, type Role } from "./game.ts";
 import { bar, clip, COLOR, e, emojiId, icon, notice } from "./ui.ts";
 import { cmd, definition as helpDefinition, help } from "./help.ts";
 import { announceLevelUp, isFirstTo60, levelUpEmbed, PROGRESS_CHANNEL_ID } from "./progress.ts";
@@ -434,7 +434,7 @@ async function forever(i: Cmd) {
       .setColor(COLOR.legendary)
       .setThumbnail(icon("raid"))
       .addFields(
-        { name: `${e("clock")} Key dates`, value: [`**Beta ends** ${ts(BETA_END)}`, `**Launch** ${ts(LAUNCH)}`, `**Raids open** ${ts(RAIDS_OPEN)}`].join("\n") },
+        { name: `${e("clock")} Key dates`, value: [`**Launch** ${ts(LAUNCH)}`, `**Raids open** ${ts(RAIDS_OPEN)}`].join("\n") },
         { name: `${e("dungeon")} New dungeons`, value: DUNGEONS.filter((d) => d.isNew).map((d) => `\`${d.levels}\` ${d.name}`).join("\n"), inline: true },
         { name: `${e("raid")} Raids`, value: RAIDS.map((r) => `\`${String(r.size).padStart(2)}\` ${r.name}${r.isNew ? " *(new)*" : ""} · ${r.opens}`).join("\n"), inline: true },
         { name: `${e("dungeon")} Classic dungeons`, value: `${DUNGEONS.filter((d) => !d.isNew).length} more, retuned for Forever. Use \`/lfg\` to browse them.` },

@@ -1,7 +1,6 @@
-// WoW Forever reference data. Beta info is still shifting: edit freely, nothing else hardcodes these lists.
+// WoW Forever reference data. Edit freely when Blizzard changes things: nothing else hardcodes these lists.
 
 export const LAUNCH = Date.parse("2026-11-04T23:00:00Z"); // 3pm PST
-export const BETA_END = Date.parse("2026-10-21T23:00:00Z");
 export const RAIDS_OPEN = Date.parse("2026-12-09T23:00:00Z");
 
 // ponytail: Blizzard hasn't published Forever's name lengths, so allow 2-24 letters per part rather than reject real names.
@@ -49,7 +48,7 @@ export type Instance = {
 const d = (name: string, levels: string, zone: string, extra: Partial<Instance> = {}): Instance => ({ name, kind: "dungeon", size: 5, levels, zone, ...extra });
 const r = (name: string, size: number, zone: string | undefined, extra: Partial<Instance> = {}): Instance => ({ name, kind: "raid", size, levels: "60", zone, ...extra });
 
-// Sources (Oct 2026, beta): Blizzard's Forever dungeon announcements, plus the in-game group finder levels as listed by
+// Sources (Oct 2026, end of beta; recheck the group finder after launch): Blizzard's Forever dungeon announcements, plus the in-game group finder levels as listed by
 // zockify.com/forever/dungeons and wowforevertalents.com/dungeons, which agree. Forever retuned classic dungeons,
 // so classic wiki ranges are wrong here (e.g. Uldaman opens at 30).
 export const INSTANCES: Instance[] = [
@@ -85,7 +84,7 @@ export const INSTANCES: Instance[] = [
   d("Shaper's Terrace", "58-60", "Un'Goro Crater", { isNew: true }),
 
   // Barrow Deeps, Hyjal Summit and Onyxia unlock Dec 9. The group finder lists the classic raids, but Blizzard only says "more in 2027".
-  r("Barrow Deeps", 10, undefined, { isNew: true, opens: "Dec 9" }),
+  r("Barrow Deeps", 10, "Mount Hyjal", { isNew: true, opens: "Dec 9" }),
   r("Hyjal Summit", 20, "Mount Hyjal", { isNew: true, opens: "Dec 9" }),
   r("Onyxia's Lair", 40, "Dustwallow Marsh", { opens: "Dec 9" }),
   r("Zul'Gurub", 20, "Stranglethorn Vale", { opens: "later" }),
