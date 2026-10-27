@@ -119,6 +119,7 @@ function topbar() {
     <div class="status">
       <span class="state ${addonOk ? "" : "warn"}">${h(addonStatus())}</span>
       <span class="state ${problem || !last ? "warn" : ""}">${h(syncStatus(problem, last))}</span>
+      ${S.updateReady ? `<button class="btn primary" data-act="installUpdate" title="Version ${h(S.updateReady)} is downloaded">Restart to update</button>` : ""}
       <button class="btn" data-act="syncNow" ${S.accounts.length ? "" : "disabled"}>Sync now</button>
     </div>
   </header>`;
@@ -329,7 +330,7 @@ function settings() {
       ${accounts ? `<ul class="accounts">${accounts}</ul>` : ""}`)}
     ${S.canOpenAtLogin ? group("Startup", toggle("setOpenAtLogin", S.openAtLogin, "Open when my computer starts", "It starts in the tray, so every play session gets synced.")) : ""}
     ${group("Activity", activity ? `<ul class="activity">${activity}</ul>` : `<p class="muted">Nothing yet.</p>`)}
-    <p class="version">uwucrew Sync ${h(S.version)}</p>
+    <p class="version">uwucrew Sync ${h(S.version)}${S.updateReady ? `. Version ${h(S.updateReady)} installs when you restart the app.` : ""}</p>
   </section>`;
 }
 

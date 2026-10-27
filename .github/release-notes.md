@@ -5,6 +5,8 @@ Rolling build of the uwucrew tools. Each file is rebuilt automatically whenever 
 - Mac (M1 and newer): `uwucrew-sync-mac-arm64.dmg`. Mac (Intel): `uwucrew-sync-mac-x64.dmg`. Open it and drag the app into Applications.
 - Linux: `uwucrew-sync-linux-x86_64.AppImage`. Make it executable and run it. If it won't start (Ubuntu 24.04 and newer), run it with `--no-sandbox`.
 
-Setup: open the app, run `/sync link` in Discord and paste the code into the app. Then play: it syncs each time you log out or `/reload`.
+Setup: open the app, run `/sync link` in Discord and paste the code into the app. Then play: it syncs each time you log out or `/reload`. The app updates itself.
+
+The `.zip` and `latest*.yml` files are for the app's automatic updates; you don't need to download them.
 
 **uwucrew Sync addon** on its own: `UwucrewSync.zip`. Unzip into your WoW Forever `Interface/AddOns` folder. Not needed if you use the app.

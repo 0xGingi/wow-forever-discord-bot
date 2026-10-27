@@ -49,6 +49,8 @@ Linking: `/sync link` in Discord gives a private code. Paste it into the app (Se
 
 `desktop/` is an Electron app for players. It finds the WoW folder, installs the addon from the latest release into `Interface/AddOns` and checks for addon updates every 3 hours, uploads after every logout or `/reload`, and shows each character: gear by slot (linked to Wowhead), XP, gold, professions, reputation, lockouts and the quest log with in-game difficulty colours. Closing the window keeps it syncing from the tray. On Windows and Mac it starts with the computer, which can be turned off in Settings.
 
+The app updates itself from the `latest` release (checked at launch and every 3 hours). CI numbers each build `2.0.<run number>`, and installed apps take any higher version: from the tray they restart into it quietly, with the window open they show a *Restart to update* button.
+
 Everything besides the UI is in `desktop/core.ts`, tested by `desktop/core.test.ts` against a fake WoW folder, bot and release. To run it: `cd desktop && bun install && bun start`. `bun run dist` packages it for the current OS into `desktop/release/`.
 
 ### Downloads and CI

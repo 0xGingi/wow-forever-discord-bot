@@ -4,6 +4,7 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, s
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { autoUpdater } from "electron-updater";
 import * as core from "./core.ts";
 
 const DIR = import.meta.dirname;
@@ -12,7 +13,10 @@ if (!app.requestSingleInstanceLock()) app.exit(0);
 
 // ---------- settings ----------
 
-type Config = { wowDir?: string; game?: string; link?: string; autoUpdate?: boolean; openAtLogin?: boolean; trayHint?: boolean };
+type Config = {
+  wowDir?: string; game?: string; link?: string; autoUpdate?: boolean; openAtLogin?: boolean; trayHint?: boolean;
+  restartedHiddenAt?: number; // set just before a quiet self-update restart, so the app comes back to the tray
+};
 const CONFIG = join(app.getPath("userData"), "config.json");
 const readJson = (file: string) => {
   try {
@@ -40,6 +44,7 @@ type AccountState = core.Account & { mtime: number; status: Status | null; synce
 const accounts = new Map<string, AccountState>();
 const activity: { at: number; ok: boolean; text: string }[] = [];
 const addon = { installed: null as string | null, latest: null as string | null, outdated: false, busy: false, error: null as string | null, checkedAt: 0 };
+let updateReady: string | null = null; // a downloaded app version waiting for a restart
 
 /** Which link uploads this account: its own from /uwu link in game, else the one pasted into the app. */
 function linkedBy(a: { link: string | null }) {
@@ -60,6 +65,7 @@ const view = () => ({
   linkServer: cfg.link ? (core.decodeLink(cfg.link)?.url ?? null) : null,
   addon,
   activity: activity.slice(0, 40),
+  updateReady,
   accounts: [...accounts.values()].map(({ exports, ...a }) => ({ ...a, linkedBy: linkedBy(a) })),
 });
 
@@ -167,6 +173,35 @@ async function checkAddon(install = cfg.autoUpdate !== false) {
   }
   Object.assign(addon, { busy: false, checkedAt: Date.now(), installed: core.installedVersion(dir) });
   push();
+}
+
+// ---------- updating the app itself ----------
+
+function installUpdate() {
+  quitting = true; // quitAndInstall closes the window before before-quit fires, so let it close now
+  autoUpdater.quitAndInstall(true, true); // silent installer, then reopen
+}
+
+function checkForUpdates() {
+  autoUpdater.checkForUpdates().catch(() => {}); // the "error" listener already logged it; the next check retries
+}
+
+function setupUpdates() {
+  // Every build has the same file names, so old and new block maps would collide. Download whole files instead.
+  autoUpdater.disableDifferentialDownload = true;
+  autoUpdater.on("error", (err) => console.error(`Update failed: ${err.message}`));
+  autoUpdater.on("update-downloaded", ({ version }) => {
+    updateReady = version;
+    note(`Downloaded version ${version}.`);
+    push();
+    // In the tray, nobody is looking: restart into it now and come back hidden. Otherwise wait for the button or the next quit.
+    if (win?.isVisible()) return;
+    cfg.restartedHiddenAt = Date.now();
+    save();
+    installUpdate();
+  });
+  checkForUpdates();
+  setInterval(checkForUpdates, 3 * 3600_000);
 }
 
 // ---------- window and tray ----------
@@ -285,6 +320,9 @@ ipcMain.handle("act", async (_e, name: string, arg: unknown): Promise<string | n
     case "openExternal":
       openExternal(String(arg));
       break;
+    case "installUpdate":
+      installUpdate();
+      break;
   }
   push();
   return null;
@@ -297,10 +335,14 @@ app.on("before-quit", () => (quitting = true));
 app.whenReady().then(() => {
   if (!cfg.wowDir || !existsSync(cfg.wowDir)) cfg.wowDir = core.detectWowDir() ?? cfg.wowDir;
   if (cfg.openAtLogin === undefined && !SMOKE) setOpenAtLogin(process.platform !== "linux");
+  const afterQuietUpdate = Date.now() - (cfg.restartedHiddenAt ?? 0) < 120_000;
+  delete cfg.restartedHiddenAt;
   save();
-  createWindow(process.argv.includes("--hidden") || app.getLoginItemSettings().wasOpenedAtLogin === true);
+  const startHidden = afterQuietUpdate || process.argv.includes("--hidden") || app.getLoginItemSettings().wasOpenedAtLogin === true;
+  createWindow(startHidden);
   createTray();
   if (SMOKE) return smokeTest();
+  if (app.isPackaged) setupUpdates();
   checkAddon();
   setInterval(checkAddon, 3 * 3600_000);
   (async () => {

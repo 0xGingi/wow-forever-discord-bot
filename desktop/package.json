@@ -19,6 +19,7 @@
     "@types/bun": "^1.4.4",
     "electron": "^45.0.0",
     "electron-builder": "^26.18.0",
+    "electron-updater": "^6.8.11",
     "typescript": "^7.0.2"
   },
   "build": {
@@ -33,6 +34,12 @@
     },
     "npmRebuild": false,
     "artifactName": "uwucrew-sync-${os}-${arch}.${ext}",
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://github.com/0xGingi/wow-forever-discord-bot/releases/download/latest"
+      }
+    ],
     "win": {
       "target": "nsis"
     },
@@ -43,6 +50,13 @@
       "target": [
         {
           "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
           "arch": [
             "arm64",
             "x64"

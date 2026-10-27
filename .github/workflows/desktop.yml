@@ -31,6 +31,8 @@ jobs:
       - name: Typecheck and test (fake WoW folder, fake bot, fake addon release)
         if: runner.os == 'Linux'
         run: bun run typecheck && bun test
+      - name: Version this build # installed apps update to any higher version
+        run: npm pkg set version="2.0.${{ github.run_number }}"
       - name: Package
         if: runner.os != 'macOS'
         run: bun run dist
@@ -62,14 +64,18 @@ jobs:
           path: |
             desktop/release/uwucrew-sync-*.exe
             desktop/release/uwucrew-sync-*.dmg
+            desktop/release/uwucrew-sync-*.zip
             desktop/release/uwucrew-sync-*.AppImage
+            desktop/release/latest*.yml
       - name: Publish to the "latest" release
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           shopt -s nullglob
-          files=(release/uwucrew-sync-*.exe release/uwucrew-sync-*.dmg release/uwucrew-sync-*.AppImage)
+          files=(release/uwucrew-sync-*.exe release/uwucrew-sync-*.dmg release/uwucrew-sync-*.zip release/uwucrew-sync-*.AppImage)
           gh release view latest >/dev/null 2>&1 || gh release create latest --title "Latest build" --notes-file ../.github/release-notes.md || true
           gh release edit latest --notes-file ../.github/release-notes.md # the notes describe these downloads
           gh release upload latest "${files[@]}" --clobber
+          # The update info goes last, so installed apps never see a version whose files aren't uploaded yet.
+          gh release upload latest release/latest*.yml --clobber
