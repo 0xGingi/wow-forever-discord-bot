@@ -82,6 +82,7 @@ test("rejects junk and tampering with a helpful message", () => {
   expect(parseExport("UWU1:{broken")).toHaveProperty("error");
   expect(parseExport(code(snap({ level: 99 })))).toHaveProperty("error");
   expect(parseExport(code(snap({ t: Date.now() / 1000 + 10 * 86400 })))).toHaveProperty("error"); // from the future
+  expect(parseExport(code(snap({ t: Date.parse("2026-10-20T12:00:00Z") / 1000 })))).toMatchObject({ error: expect.stringContaining("beta character") });
   expect(parseExport(code({ ...snap(), gear: [{ s: 1, id: "x" }] }))).toHaveProperty("error");
   expect(parseExport(code(snap()))).toHaveProperty("snap");
 });

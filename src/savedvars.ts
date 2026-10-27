@@ -3,6 +3,10 @@
 
 export const PREFIX = "UWU1:";
 
+/** The beta closed on Oct 22. Anything the addon saved before this is a beta character, and those don't carry over to launch. */
+export const BETA_OVER = Date.parse("2026-10-24T00:00:00Z");
+export const fromBeta = (snap: { t: number }) => snap.t * 1000 < BETA_OVER;
+
 /** One character as the uwucrew Sync addon reports it. Short keys keep the paste code small. */
 export type Snapshot = {
   v: 1; t: number; first: string; last: string; level: number; xp?: number; xpMax?: number;

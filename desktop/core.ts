@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { inflateRawSync } from "node:zlib";
-import { extractExports, extractLink, PREFIX, type Snapshot } from "../src/savedvars.ts";
+import { extractExports, extractLink, fromBeta, PREFIX, type Snapshot } from "../src/savedvars.ts";
 
 export type { Snapshot };
 export const ADDON = "UwucrewSync";
@@ -62,10 +62,15 @@ export function readAccount(file: string): Account {
   const exports: string[] = [];
   const chars: Snapshot[] = [];
   for (const code of extractExports(text)) {
+    let snap: Snapshot;
     try {
-      chars.push(JSON.parse(code.slice(PREFIX.length)));
-      exports.push(code); // kept in step with chars, so upload results line up with them
-    } catch {} // a damaged entry; the next logout rewrites it
+      snap = JSON.parse(code.slice(PREFIX.length));
+    } catch {
+      continue; // a damaged entry; the next logout rewrites it
+    }
+    if (fromBeta(snap)) continue; // left over from the beta's game folder; never shown or uploaded
+    chars.push(snap);
+    exports.push(code); // kept in step with chars, so upload results line up with them
   }
   return { file, game: parts.at(-6)!, name: parts.at(-3)!, link: extractLink(text), exports, chars };
 }

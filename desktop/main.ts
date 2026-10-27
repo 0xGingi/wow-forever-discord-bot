@@ -66,7 +66,7 @@ const view = () => ({
   addon,
   activity: activity.slice(0, 40),
   updateReady,
-  accounts: [...accounts.values()].map(({ exports, ...a }) => ({ ...a, linkedBy: linkedBy(a) })),
+  accounts: [...accounts.values()].filter((a) => a.chars.length).map(({ exports, ...a }) => ({ ...a, linkedBy: linkedBy(a) })),
 });
 
 let win: BrowserWindow | null = null;
@@ -92,9 +92,9 @@ function setStatus(a: AccountState, ok: boolean, text: string) {
 
 /** Uploads one WoW account. Returns false if it should be retried. */
 async function syncAccount(a: AccountState) {
+  if (!a.exports.length) return true; // nothing to upload, e.g. only beta characters
   const link = core.decodeLink(a.link ?? cfg.link ?? "");
   if (!link) return setStatus(a, false, "Not linked to Discord yet, so nothing was uploaded."), true;
-  if (!a.exports.length) return true;
   const r = await core.upload(link, a.exports);
   if (r.status !== "ok") {
     if (r.status === "throttled") return false;

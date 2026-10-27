@@ -18,12 +18,12 @@ test("finds the saved data, reads the link and uploads every character", async (
       return Response.json({ results: [{ ok: true, name: "Smoke Test", message: "**Smoke Test** synced (level 30)." }] });
     },
   });
-  // What WoW writes after /uwu link and a logout: a linked account with one character (plus a damaged entry).
+  // What WoW writes after /uwu link and a logout: a linked account with one character, plus a damaged entry and a beta leftover.
   const link = `uwusync-${Buffer.from(JSON.stringify({ u: `http://127.0.0.1:${bot.port}`, t: "smoke-token" })).toString("base64url")}`;
   const saved = join(wow, "_forever_", "WTF", "Account", "SMOKE#1", "SavedVariables");
   mkdirSync(saved, { recursive: true });
   writeFileSync(join(saved, "UwucrewSync.lua"),
-    `\nUwucrewSyncDB = {\n\t["link"] = "${link}",\n\t["exports"] = {\n\t\t["Smoke Test"] = "UWU1:{\\"first\\":\\"Smoke\\",\\"last\\":\\"Test\\",\\"level\\":30}",\n\t\t["Bad"] = "UWU1:{oops",\n\t},\n}\n`);
+    `\nUwucrewSyncDB = {\n\t["link"] = "${link}",\n\t["exports"] = {\n\t\t["Smoke Test"] = "UWU1:{\\"first\\":\\"Smoke\\",\\"last\\":\\"Test\\",\\"level\\":30}",\n\t\t["Bad"] = "UWU1:{oops",\n\t\t["Old Beta"] = "UWU1:{\\"t\\":1792497600,\\"first\\":\\"Old\\",\\"last\\":\\"Beta\\",\\"level\\":30}",\n\t},\n}\n`);
 
   expect(core.gameFolders(wow)).toEqual(["_forever_", "_retail_"]);
   expect(core.normalizeWowDir(join(wow, "_forever_"))).toBe(wow);

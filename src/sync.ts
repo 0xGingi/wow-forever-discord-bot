@@ -6,7 +6,7 @@ import {
 import { db, getChar, userChars, type Char } from "./db.ts";
 import { CLASSES, formatCharName, PROFESSIONS, RACES, type ClassName } from "./game.ts";
 import { announceLevelUp, isFirstTo60, levelUpEmbed } from "./progress.ts";
-import { PREFIX, type Snapshot } from "./savedvars.ts";
+import { fromBeta, PREFIX, type Snapshot } from "./savedvars.ts";
 import { bar, clip, COLOR, e, icon, notice } from "./ui.ts";
 
 const PUBLIC_URL = process.env.SYNC_PUBLIC_URL?.replace(/\/$/, "");
@@ -41,6 +41,7 @@ export function parseExport(text: string): { snap: Snapshot } | { error: string 
     opt(d.log, (v) => list(v, 60, (q) => isNum(q?.id, 1) && isStr(q?.n, 150) && opt(q?.l, (x) => isNum(x, 0, 100)) && opt(q?.z, (x) => isStr(x)) &&
       typeof q?.c === "boolean" && list(q?.o, 12, (o) => isStr(o?.t, 200) && typeof o?.d === "boolean")));
   if (!valid) return { error: "That sync code doesn't look right. Make sure the uwucrew Sync addon is up to date, then try again." };
+  if (fromBeta(d)) return { error: `**${d.first} ${d.last}** is a beta character. Beta characters don't carry over to launch, so it wasn't synced.` };
   return { snap: d as Snapshot };
 }
 
