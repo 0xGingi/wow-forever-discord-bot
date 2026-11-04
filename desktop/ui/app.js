@@ -412,6 +412,21 @@ function addonButton() {
   return `<button class="btn" data-act="checkAddon" ${ad.busy ? "disabled" : ""}>Check for updates</button>`;
 }
 
+function appDetail() {
+  const u = S.appUpdate;
+  if (S.updateReady) return `Version ${h(S.updateReady)} is downloaded. Restart the app to finish updating.`;
+  if (u.busy) return "Checking for updates…";
+  if (u.downloading) return `Downloading version ${h(u.downloading)}…`;
+  if (u.error) return h(u.error);
+  if (u.checkedAt) return `Up to date. Checked ${rel(u.checkedAt)}.`;
+  return "Updates itself every few hours.";
+}
+
+function appButton() {
+  if (S.updateReady) return `<button class="btn primary" data-act="installUpdate">Restart to update</button>`;
+  return `<button class="btn" data-act="checkApp" ${S.appUpdate.busy || S.appUpdate.downloading ? "disabled" : ""}>Check for updates</button>`;
+}
+
 function settings() {
   const ad = S.addon;
   const addonTitle = ad.installed ? `Version ${h(ad.installed)} installed` : "Not installed";
@@ -428,7 +443,8 @@ function settings() {
     ${group("Addon", `
       <div class="row"><div><p class="row-title">${addonTitle}</p><p class="muted">${addonDetail()}</p></div>
         <div class="row-actions">${S.wowFound ? `<button class="btn" data-act="openAddonFolder">Open folder</button>` : ""}${addonButton()}</div></div>
-      ${toggle("setAutoUpdate", S.autoUpdate, "Keep the addon installed and up to date", "Checks for a new version every few hours. Type /reload in game after an update.")}`)}
+      ${toggle("setAutoUpdate", S.autoUpdate, "Keep the addon installed and up to date", "Checks for a new version every few hours. Restart WoW after an update to load it.")}`)}
+    ${group("App", `<div class="row"><div><p class="row-title">uwucrew Sync ${h(S.version)}</p><p class="muted">${appDetail()}</p></div>${appButton()}</div>`)}
     ${group("Discord link", `
       <p class="muted">Run /sync link in Discord and paste the code here. It's used for every WoW account that isn't linked in game.</p>
       <div class="row"><p class="row-title">${S.linkServer ? `Linked to ${h(host(S.linkServer))}` : "No link saved"}</p>${S.linkServer ? `<button class="btn" data-act="setLink" data-arg="">Remove link</button>` : ""}</div>
@@ -436,7 +452,6 @@ function settings() {
       ${accounts ? `<ul class="accounts">${accounts}</ul>` : ""}`)}
     ${S.canOpenAtLogin ? group("Startup", toggle("setOpenAtLogin", S.openAtLogin, "Open when my computer starts", "It starts in the tray, so every play session gets synced.")) : ""}
     ${group("Activity", activity ? `<ul class="activity">${activity}</ul>` : `<p class="muted">Nothing yet.</p>`)}
-    <p class="version">uwucrew Sync ${h(S.version)}${S.updateReady ? `. Version ${h(S.updateReady)} installs when you restart the app.` : ""}</p>
   </section>`;
 }
 

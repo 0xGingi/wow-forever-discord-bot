@@ -226,7 +226,6 @@ a.item:hover { background: linear-gradient(90deg, color-mix(in srgb, var(--q) 14
 .activity li { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 10px; }
 .activity time { color: var(--faint); font-variant-numeric: tabular-nums; }
 .activity .bad span { color: var(--warn); }
-.version { margin-top: 8px; color: var(--faint); font-size: 12px; }
 
 /* ---------- character extras ---------- */
 

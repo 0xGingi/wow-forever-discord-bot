@@ -46,6 +46,7 @@ const accounts = new Map<string, AccountState>();
 const activity: { at: number; ok: boolean; text: string }[] = [];
 const addon = { installed: null as string | null, latest: null as string | null, outdated: false, busy: false, error: null as string | null, checkedAt: 0 };
 let updateReady: string | null = null; // a downloaded app version waiting for a restart
+const appUpdate = { busy: false, error: null as string | null, checkedAt: 0, downloading: null as string | null };
 let guild: core.Guild | null = null; // the guild feed from the bot, for the Guild and Raids tabs
 let guildError: string | null = null;
 const ICONS = join(app.getPath("userData"), "icons.json");
@@ -71,6 +72,7 @@ const view = () => ({
   addon,
   activity: activity.slice(0, 40),
   updateReady,
+  appUpdate,
   guild,
   guildError,
   icons,
@@ -244,8 +246,19 @@ function installUpdate() {
   autoUpdater.quitAndInstall(true, true); // silent installer, then reopen
 }
 
-function checkForUpdates() {
-  autoUpdater.checkForUpdates().catch(() => {}); // the "error" listener already logged it; the next check retries
+async function checkForUpdates() {
+  if (!app.isPackaged) return Object.assign(appUpdate, { error: "Updates only work in the installed app.", checkedAt: Date.now() }), push();
+  if (appUpdate.busy) return;
+  Object.assign(appUpdate, { busy: true, error: null });
+  push();
+  try {
+    const r = await autoUpdater.checkForUpdates(); // a newer version then downloads in the background
+    appUpdate.downloading = r?.isUpdateAvailable && r.updateInfo.version !== updateReady ? r.updateInfo.version : null;
+  } catch (err) {
+    appUpdate.error = `Couldn't check for updates (${(err as Error).message.split("\n")[0]})`; // the next check retries
+  }
+  Object.assign(appUpdate, { busy: false, checkedAt: Date.now() });
+  push();
 }
 
 function setupUpdates() {
@@ -254,6 +267,7 @@ function setupUpdates() {
   autoUpdater.on("error", (err) => console.error(`Update failed: ${err.message}`));
   autoUpdater.on("update-downloaded", ({ version }) => {
     updateReady = version;
+    appUpdate.downloading = null;
     note(`Downloaded version ${version}.`);
     push();
     // In the tray, nobody is looking: restart into it now and come back hidden. Otherwise wait for the button or the next quit.
@@ -306,12 +320,21 @@ function createWindow(hidden: boolean) {
   win.loadFile(join(DIR, "index.html"));
 }
 
+/** The tray has no status line, so say how the check went. */
+async function checkFromTray() {
+  await checkForUpdates();
+  if (appUpdate.error) notify("Couldn't check for updates", appUpdate.error);
+  else if (appUpdate.downloading) notify(`Downloading uwucrew Sync ${appUpdate.downloading}`, "It updates once the download finishes.");
+  else if (!updateReady) notify("uwucrew Sync is up to date", `You have version ${app.getVersion()}.`);
+}
+
 function createTray() {
   tray = new Tray(nativeImage.createFromPath(join(DIR, "icon.png")).resize({ width: process.platform === "darwin" ? 18 : 32 }));
   tray.setToolTip("uwucrew Sync");
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: "Open uwucrew Sync", click: show },
     { label: "Sync now", click: syncNow },
+    { label: "Check for updates", click: checkFromTray },
     { type: "separator" },
     { label: "Quit", click: () => app.quit() },
   ]));
@@ -384,6 +407,9 @@ ipcMain.handle("act", async (_e, name: string, arg: unknown): Promise<string | n
       break;
     case "openExternal":
       openExternal(String(arg));
+      break;
+    case "checkApp":
+      await checkForUpdates();
       break;
     case "installUpdate":
       installUpdate();
