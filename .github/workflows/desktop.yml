@@ -10,7 +10,9 @@ on:
 permissions:
   contents: write # publish to the rolling "latest" release
 
-concurrency: { group: desktop-${{ github.ref }}, cancel-in-progress: false } # publish to the release in push order
+concurrency: # publish to the release in push order
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build:
