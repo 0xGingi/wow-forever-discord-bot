@@ -38,6 +38,8 @@ Click a signup button again to withdraw. Signups use your main character's name.
 
 `addon/UwucrewSync` is a WoW Forever addon (interface `16001`) that records each character's level, XP, class, race, role, guild, gear and item level, professions and known recipes, gold, time played, quests completed, current quest log with objectives, dungeon/raid lockouts (with the raid bosses killed), top reputations, and Hardcore deaths. Paste codes must fit Discord's 4000-character limit, so they shed detail (objectives first) when the log is full; the desktop app always uploads everything.
 
+In game, the world map shows how many guildmates are online in each zone (from the guild roster, so it works without the app), and a zone's map names who's there.
+
 WoW addons can't use the internet, so data reaches the bot one of two ways:
 
 - **Paste:** `/uwu sync` in game shows a code; `/sync paste` in Discord takes it. Works with no setup.
