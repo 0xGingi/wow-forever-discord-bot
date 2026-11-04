@@ -86,7 +86,7 @@ export const definitions = [
   new SlashCommandBuilder().setName("lfg").setDescription("Looking for group")
     .addStringOption((o) => o.setName("dungeon").setDescription("Dungeon").setRequired(true).setAutocomplete(true).setMaxLength(100))
     .addStringOption((o) => o.setName("role").setDescription("Your role").setRequired(true).addChoices(...choices(ROLES)))
-    .addStringOption((o) => o.setName("note").setDescription("e.g. 'quest run, need Thanes key'").setMaxLength(200)),
+    .addStringOption((o) => o.setName("note").setDescription("e.g. 'quest run, chill pace'").setMaxLength(200)),
 
   new SlashCommandBuilder().setName("sr").setDescription("Soft reserves")
     .addSubcommand((s) => s.setName("reserve").setDescription("Soft reserve an item for a raid")
@@ -363,9 +363,9 @@ async function loot(i: Cmd) {
 
 async function attendance(i: Cmd) {
   // ponytail: counts signups, not who actually showed; add a /event attended roll-call if officers want real attendance.
-  const raids = db.query<{ id: number }, []>(
-    "select id from events where kind = 'raid' and cancelled = 0 and starts_at < unixepoch() order by starts_at desc limit 10",
-  ).all();
+  const raids = db.query<{ id: number }, [number]>( // beta raids don't count
+    "select id from events where kind = 'raid' and cancelled = 0 and starts_at between ? and unixepoch() order by starts_at desc limit 10",
+  ).all(LAUNCH / 1000);
   if (!raids.length) return i.reply(notice("info", "No past raids yet."));
   const rows = db.query<{ user_id: string; n: number }, []>(
     `select user_id, count(*) n from signups where status = 'in' and event_id in (${raids.map((r) => r.id).join(",")}) group by user_id order by n desc`,

@@ -153,6 +153,13 @@ test("raid progress: first kills announced once, a full clear called out, Hardco
   expect(later.death).toBeUndefined(); // announced only the first time
 });
 
+test("a beta-era death riding along in a fresh snapshot is dropped", () => {
+  const code = `UWU1:${JSON.stringify(snap({ first: "Reused", last: "Name", t: Math.floor(Date.now() / 1000), hc: true, died: { t: 1761000000, l: 14 } }))}`;
+  const parsed = parseExport(code);
+  if ("error" in parsed) throw new Error(parsed.error);
+  expect(parsed.snap.died).toBeUndefined();
+});
+
 test("a paste code without recipes keeps the ones the app uploaded", () => {
   const t = Math.floor(Date.now() / 1000);
   applySync("crafty", snap({ first: "Crafty", last: "Hands", t, recipes: { Alchemy: ["Minor Healing Potion"] } }));

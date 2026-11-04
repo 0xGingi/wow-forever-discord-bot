@@ -59,7 +59,7 @@ GetZoneText = function() return "Wetlands" end
 local skills = { { "Cloth", "header" }, { "Bolt of Silk Cloth", "optimal" }, { "Azure Silk Hood", "medium" } }
 GetTradeSkillLine = function() return "Tailoring", 151, 225 end
 GetNumTradeSkills = function() return #skills end
-GetTradeSkillInfo = function(i) return skills[i][1], skills[i][2] end
+GetTradeSkillInfo = function(i) return skills[i][1], skills[i][2], 0, skills[i][2] == "header" and 1 or nil end -- name, type, numAvailable, isExpanded
 -- What the uwucrew Sync app writes into GuildData.lua.
 UwucrewSyncGuild = {
   raids = { { title = "Hyjal Summit", t = os.time() + 3600, mine = "Healer", going = 12, size = 20 }, { title = "Old raid", t = os.time() - 60 } },

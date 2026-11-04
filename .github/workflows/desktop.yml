@@ -10,6 +10,8 @@ on:
 permissions:
   contents: write # publish to the rolling "latest" release
 
+concurrency: { group: desktop-${{ github.ref }}, cancel-in-progress: false } # publish to the release in push order
+
 jobs:
   build:
     # Each OS packages its own installer and launches the packaged app once, so we know it starts there.

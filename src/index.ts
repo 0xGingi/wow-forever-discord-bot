@@ -45,8 +45,9 @@ client.on(Events.InteractionCreate, async (i) => {
     }
   } catch (e) {
     console.error(e);
-    if (i.isRepliable() && !i.replied && !i.deferred)
-      await i.reply(notice("err", "Something broke. Tell an officer!")).catch(() => {});
+    const msg = notice("err", e instanceof Error && e.message.startsWith("I can't") ? e.message : "Something broke. Tell an officer!");
+    if (i.isRepliable() && i.deferred && !i.replied) await i.editReply({ embeds: msg.embeds }).catch(() => {});
+    else if (i.isRepliable() && !i.replied) await i.reply(msg).catch(() => {});
   }
 });
 

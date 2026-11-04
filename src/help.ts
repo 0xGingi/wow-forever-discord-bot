@@ -53,7 +53,7 @@ const TOPICS: Record<string, Topic> = {
     icon: "hearth",
     blurb: "The uwucrew Sync addon fills in your profile",
     body: () => [
-      "Install the **uwucrew Sync** addon and your level, gear, professions, gold, lockouts and reputation sync from the game. Level-ups, first raid boss kills and Hardcore deaths get announced automatically.",
+      "Install the **uwucrew Sync** addon and your level, gear, professions, gold, lockouts and reputation sync from the game. Level-ups and first raid boss kills get announced automatically, and Hardcore deaths too once Hardcore opens.",
       "Open your profession window once in game and your recipes sync too, so guildmates can find you with `/craft`.",
       "",
       `**Quick way:** in game type \`/uwu sync\`, press Ctrl+C, then ${cmd("sync paste")} here and paste.`,

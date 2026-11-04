@@ -24,7 +24,7 @@ Discord bot for **uwucrew**, a World of Warcraft: Forever guild.
 | `/rolepanel` | *(Manage Roles)* Posts a panel in the current channel: **Join uwucrew** (gives the member role) and toggles for the Tank/Healer/DPS Discord roles, which it creates if missing |
 | `/apply` | Application form → officer channel with Accept/Decline (accept grants the member role + DMs them) |
 | `/timezone` | Set your timezone once. Search by city (`london`) or by what your clock says right now (`8:15 pm`) |
-| `/forever` | Launch and raid dates, new dungeons and raids |
+| `/forever` | Launch and raid dates, new dungeons and the raids announced so far |
 
 **Group channels:** `/lfg` and `/event create` each get a private text channel and voice channel (turn off with `channels:false`). Only the organizer and people signed up can see them, and access updates as people join or leave. The channels are deleted `GROUP_TTL_HOURS` after the start time, once voice is empty. They're deleted right away if the event is cancelled or everyone leaves an LFG group. Set `GROUP_CATEGORY_ID` to keep them under one category.
 
@@ -43,7 +43,7 @@ WoW addons can't use the internet, so data reaches the bot one of two ways:
 - **Paste:** `/uwu sync` in game shows a code; `/sync paste` in Discord takes it. Works with no setup.
 - **Desktop app:** `/sync link` gives a private link code. The uwucrew Sync app (`desktop/`) watches the addon's SavedVariables file (written on every logout and `/reload`) and uploads it. Needs `SYNC_PUBLIC_URL` pointing at the bot's sync port (`8787` inside the container) over HTTPS, e.g. through a reverse proxy or tunnel. With Docker, the bundled Cloudflare Tunnel (below) is the easiest way.
 
-Synced characters are created or updated automatically; professions follow what the game reports; level-ups, the guild's first kill of each raid boss (and full clears), and Hardcore deaths are announced in `PROGRESS_CHANNEL_ID` (or the channel used for `/sync paste`). Anything the addon saved before the beta closed is ignored, since beta characters didn't carry over. Characters registered to another Discord user can't be overwritten.
+Synced characters are created or updated automatically; professions follow what the game reports; level-ups, the guild's first kill of each raid boss (and full clears), and Hardcore deaths are announced in `PROGRESS_CHANNEL_ID` (or the channel used for `/sync paste`). Anything the addon saved before the beta closed is ignored, since beta characters didn't carry over. On its first start after this update the bot also clears what the beta left in the database once: synced beta characters, levels from `/ding` and `/char add`, raid kills and loot (pre-launch raids also drop out of `/attendance`). Characters registered to another Discord user can't be overwritten.
 
 Linking: `/sync link` in Discord gives a private code. Paste it into the app (Settings → Discord link) and every WoW account on that PC syncs to that Discord user. To split a shared PC between people, use `/uwu link <code>` in game instead: it ties just that WoW account, and an in-game link wins over the app's.
 
@@ -53,7 +53,7 @@ Linking: `/sync link` in Discord gives a private code. Paste it into the app (Se
 
 With a link it also shows the guild, from the bot's `GET /guild`: a **Guild** tab (raid progress, race to 60, a "who can craft it" search, the roster) and a **Raids** tab with the same signup buttons as the Discord posts (`POST /signup`). Each quest in your log lists guildmates on it, and gear shows Wowhead icons. The app also writes the addon's `GuildData.lua` (upcoming raids and who's on which quest), which the game loads on login or `/reload`: the addon then shows your next raid at login, names guildmates when you accept a quest they're on, and adds `/uwu raids` and `/uwu quests`. The addon release ships that file empty, and the app's updates never overwrite it.
 
-The app updates itself from the `latest` release (checked at launch and every 3 hours). CI numbers each build `2.0.<run number>`, and installed apps take any higher version: from the tray they restart into it quietly, with the window open they show a *Restart to update* button.
+The app updates itself from the `latest` release (checked at launch and every 3 hours). CI numbers each build `2.0.<run number>`, and installed apps take any higher version: from the tray they restart into it quietly (on Linux it installs at the next quit instead, since an AppImage would relaunch without `--no-sandbox`), with the window open they show a *Restart to update* button.
 
 Everything besides the UI is in `desktop/core.ts`, tested by `desktop/core.test.ts` against a fake WoW folder, bot and release. To run it: `cd desktop && bun install && bun start`. `bun run dist` packages it for the current OS into `desktop/release/`.
 

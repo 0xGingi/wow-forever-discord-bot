@@ -33,7 +33,8 @@ function save() {
 }
 
 const games = () => (cfg.wowDir ? core.gameFolders(cfg.wowDir) : []);
-const game = () => (games().includes(cfg.game ?? "") ? cfg.game! : games()[0]);
+// A folder picked during the beta is skipped now that it's over.
+const game = () => (games().includes(cfg.game ?? "") && !/beta|ptr/i.test(cfg.game!) ? cfg.game! : games()[0]);
 
 // ---------- state shown in the window ----------
 
@@ -120,6 +121,7 @@ async function syncAccount(a: AccountState) {
   return true;
 }
 
+let lastGame: string | undefined;
 async function tick() {
   if (!cfg.wowDir) return;
   let changed = false;
@@ -127,6 +129,8 @@ async function tick() {
     files = core.savedVarFiles(cfg.wowDir);
     lastScan = Date.now();
     for (const f of accounts.keys()) if (!files.includes(f)) changed = accounts.delete(f);
+    if (game() !== lastGame) checkAddon(); // e.g. the live _forever_ folder just appeared: install there right away
+    lastGame = game();
   }
   for (const file of files) {
     const mtime = existsSync(file) ? statSync(file).mtimeMs : 0;
@@ -189,16 +193,19 @@ let fetchingIcons = false;
 async function fetchIcons() {
   if (fetchingIcons) return;
   fetchingIcons = true;
-  const wanted = new Set([...accounts.values()].flatMap((a) => a.chars.flatMap((c) => c.gear.map((g) => g.id))));
   let found = false;
-  for (const id of wanted) {
-    if (id in icons) continue;
-    try {
-      icons[id] = await core.itemIcon(id);
-      found = true;
-    } catch {} // offline: left out, so it's tried again next time
+  try {
+    const wanted = new Set([...accounts.values()].flatMap((a) => a.chars.flatMap((c) => (c.gear ?? []).map((g) => g.id))));
+    for (const id of wanted) {
+      if (id in icons) continue;
+      try {
+        icons[id] = await core.itemIcon(id);
+        found = true;
+      } catch {} // offline or rate limited: left out, so it's tried again next time
+    }
+  } finally {
+    fetchingIcons = false;
   }
-  fetchingIcons = false;
   if (!found) return;
   writeFileSync(ICONS, JSON.stringify(icons));
   push();
@@ -218,7 +225,7 @@ async function checkAddon(install = cfg.autoUpdate !== false) {
     addon.latest = core.tocVersion(release.get(`${core.ADDON}.toc`));
     if (install && core.installAddon(dir, release).length) {
       note(had ? `Updated the addon to ${addon.latest}.` : `Installed the addon (${addon.latest}).`);
-      if (had) notify(`uwucrew Sync addon updated to ${addon.latest}`, "Type /reload in game to load it.");
+      if (had) notify(`uwucrew Sync addon updated to ${addon.latest}`, "If WoW is open, restart it to load the update.");
       else notify("uwucrew Sync addon installed", "If WoW is open, restart it to load the addon.");
     }
     addon.outdated = core.addonChanges(dir, release).length > 0;
@@ -250,7 +257,8 @@ function setupUpdates() {
     note(`Downloaded version ${version}.`);
     push();
     // In the tray, nobody is looking: restart into it now and come back hidden. Otherwise wait for the button or the next quit.
-    if (win?.isVisible()) return;
+    // Linux AppImages relaunch without their arguments (Ubuntu needs --no-sandbox), so they wait for the next quit too.
+    if (win?.isVisible() || process.platform === "linux") return;
     cfg.restartedHiddenAt = Date.now();
     save();
     installUpdate();
@@ -285,6 +293,7 @@ function createWindow(hidden: boolean) {
   win.webContents.setWindowOpenHandler(({ url }) => (openExternal(url), { action: "deny" }));
   win.webContents.on("will-navigate", (e, url) => (e.preventDefault(), openExternal(url)));
   win.once("ready-to-show", () => hidden || win!.show());
+  win.on("session-end", () => (quitting = true)); // Windows logoff/shutdown skips before-quit; don't block it
   win.on("close", (e) => {
     if (quitting) return;
     e.preventDefault();
@@ -404,6 +413,8 @@ ipcMain.handle("act", async (_e, name: string, arg: unknown): Promise<string | n
 app.on("second-instance", show);
 app.on("activate", show);
 app.on("before-quit", () => (quitting = true));
+
+app.setAppUserModelId("gg.uwucrew.sync"); // Windows only shows notifications for an app with an id
 
 app.whenReady().then(() => {
   if (!cfg.wowDir || !existsSync(cfg.wowDir)) cfg.wowDir = core.detectWowDir() ?? cfg.wowDir;

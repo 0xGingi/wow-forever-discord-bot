@@ -3,7 +3,7 @@ import { expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { backup, db, migrate } from "./db.ts";
+import { backup, clearBeta, db, migrate } from "./db.ts";
 
 test("migrate upgrades a db made by an older version without losing data", () => {
   const old = new Database(":memory:", { strict: true });
@@ -34,4 +34,21 @@ test("daily backups: one readable copy per day, oldest deleted past the limit", 
   const copy = new Database(join(dir, "uwucrew-2026-11-03.sqlite"), { readonly: true });
   expect(copy.query("select tz from users where user_id = 'backup-user'").get()).toEqual({ tz: "UTC" });
   expect(existsSync(join(dir, "uwucrew-2026-11-01.sqlite"))).toBe(false);
+});
+
+test("clearBeta drops beta characters, levels and kills once", () => {
+  const t = new Database(":memory:", { strict: true });
+  migrate(t);
+  t.run(`
+    insert into chars (id, user_id, name, class, race, role, level, is_main, level_at) values
+      (1, 'u1', 'Beta Synced', 'Mage', 'Gnome', 'DPS', 40, 1, 1), (2, 'u1', 'Hand Added', 'Mage', 'Gnome', 'DPS', 30, 0, 1);
+    insert into synced values (1, '{"t":1761000000}', 1);
+    insert into kills values ('Hyjal Summit', 'Rage Winterchill', 1, 'Beta Synced');
+  `);
+  clearBeta(t);
+  expect(t.query("select name, level, is_main from chars").all()).toEqual([{ name: "Hand Added", level: 1, is_main: 1 }]);
+  expect(t.query("select * from kills").all()).toEqual([]);
+  t.run("update chars set level = 5");
+  clearBeta(t); // only ever runs once
+  expect(t.query("select level from chars").get()).toEqual({ level: 5 });
 });

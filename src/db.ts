@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
 import { mkdirSync, readdirSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { LAUNCH } from "./game.ts";
 
 const SCHEMA = `
 create table if not exists users (
@@ -109,11 +110,28 @@ export function migrate(target: Database) {
   want.close();
 }
 
+/** Runs once per db file: beta characters didn't carry over, so drop the levels, characters and kills the beta left behind. */
+export function clearBeta(target: Database) {
+  if (target.query<{ user_version: number }, []>("pragma user_version").get()!.user_version >= 1) return;
+  const launch = LAUNCH / 1000;
+  target.transaction(() => {
+    const synced = target.run("delete from chars where id in (select char_id from synced where json_extract(data, '$.t') < ?)", [launch]).changes;
+    // Hand-registered characters keep their name (it may be a launch reservation) but start over at level 1.
+    const reset = target.run("update chars set level = 1, level_at = unixepoch(), died_at = null where level_at < ? and id not in (select char_id from synced)", [launch]).changes;
+    target.run("update chars set is_main = 1 where id in (select min(id) from chars group by user_id having max(is_main) = 0)");
+    const kills = target.run("delete from kills where at < ?", [launch]).changes;
+    const loot = target.run("delete from loot where at < ?", [launch]).changes;
+    target.run("pragma user_version = 1");
+    if (synced + reset + kills + loot) console.log(`db: cleared beta data (${synced} synced characters, ${reset} levels reset, ${kills} kills, ${loot} loot)`);
+  })();
+}
+
 const DB_PATH = process.env.DB_PATH ?? "uwucrew.sqlite";
 export const db = new Database(DB_PATH, { create: true, strict: true });
 db.run("pragma journal_mode = wal");
 db.run("pragma foreign_keys = on");
 migrate(db);
+clearBeta(db);
 
 export type Char = { id: number; user_id: string; name: string; class: string; race: string; role: string; level: number; is_main: number; level_at: number; died_at: number | null };
 export type Event = {

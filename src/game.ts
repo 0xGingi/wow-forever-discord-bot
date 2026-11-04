@@ -1,9 +1,9 @@
 // WoW Forever reference data. Edit freely when Blizzard changes things: nothing else hardcodes these lists.
 
 export const LAUNCH = Date.parse("2026-11-04T23:00:00Z"); // 3pm PST
-export const RAIDS_OPEN = Date.parse("2026-12-09T23:00:00Z");
+export const RAIDS_OPEN = Date.parse("2026-12-09T23:00:00Z"); // ponytail: Blizzard gave the day, not the hour; launch-time guess
 
-// ponytail: Blizzard hasn't published Forever's name lengths, so allow 2-24 letters per part rather than reject real names.
+// ponytail: fan guides say 2-12 letters per part, Blizzard hasn't confirmed, so allow 2-24 rather than reject real names.
 const NAME_PART = /^\p{L}{2,24}$/u;
 const cap = (s: string) => s[0]!.toUpperCase() + s.slice(1).toLowerCase();
 
@@ -53,7 +53,7 @@ const r = (name: string, size: number, zone: string | undefined, extra: Partial<
 // so classic wiki ranges are wrong here (e.g. Uldaman opens at 30).
 export const INSTANCES: Instance[] = [
   d("Ragefire Chasm", "13+", "Orgrimmar"),
-  d("Hall of Thanes", "13-18", "Ironforge", { isNew: true }),
+  d("The Hall of Thanes", "13-18", "Ironforge", { isNew: true }),
   d("Ruins of Lordaeron", "15-20", "Tirisfal Glades", { isNew: true }),
   d("The Deadmines", "16+", "Westfall"),
   d("Wailing Caverns", "17+", "The Barrens"),
@@ -83,16 +83,10 @@ export const INSTANCES: Instance[] = [
   d("Scholomance", "57+", "Western Plaguelands"),
   d("Shaper's Terrace", "58-60", "Un'Goro Crater", { isNew: true }),
 
-  // Barrow Deeps, Hyjal Summit and Onyxia unlock Dec 9. The group finder lists the classic raids, but Blizzard only says "more in 2027".
+  // The only raids Blizzard has announced: all unlock Dec 9. Forever is set before Molten Core; the 2027 roadmap's raids are unnamed, add them when they are.
   r("Barrow Deeps", 10, "Mount Hyjal", { isNew: true, opens: "Dec 9" }),
   r("Hyjal Summit", 20, "Mount Hyjal", { isNew: true, opens: "Dec 9" }),
   r("Onyxia's Lair", 40, "Dustwallow Marsh", { opens: "Dec 9" }),
-  r("Zul'Gurub", 20, "Stranglethorn Vale", { opens: "later" }),
-  r("Molten Core", 40, "Blackrock Mountain", { opens: "later" }),
-  r("Blackwing Lair", 40, "Blackrock Mountain", { opens: "later" }),
-  r("Ruins of Ahn'Qiraj", 20, "Silithus", { opens: "later" }),
-  r("Temple of Ahn'Qiraj", 40, "Silithus", { opens: "later" }),
-  r("Naxxramas", 40, "Eastern Plaguelands", { opens: "later" }),
 ];
 export const DUNGEONS = INSTANCES.filter((x) => x.kind === "dungeon");
 export const RAIDS = INSTANCES.filter((x) => x.kind === "raid");

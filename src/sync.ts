@@ -49,6 +49,7 @@ export function parseExport(text: string): { snap: Snapshot } | { error: string 
     opt(d.died, (v: any) => isNum(v?.t) && isNum(v?.l, 1, 60) && opt(v?.z, (x) => isStr(x)));
   if (!valid) return { error: "That sync code doesn't look right. Make sure the uwucrew Sync addon is up to date, then try again." };
   if (fromBeta(d)) return { error: `**${d.first} ${d.last}** is a beta character. Beta characters don't carry over to launch, so it wasn't synced.` };
+  if (d.died && fromBeta(d.died)) delete d.died; // older addons keep deaths by name, so a beta death can ride along with a reused name
   return { snap: d as Snapshot };
 }
 

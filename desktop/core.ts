@@ -30,10 +30,15 @@ const ls = (dir: string) => {
   }
 };
 const isGameFolder = (name: string) => /^_\w+_$/.test(name);
+function rank(name: string) {
+  if (name === "_forever_") return 0;
+  if (/beta|ptr/i.test(name)) return 3;
+  if (/forever/i.test(name)) return 1;
+  return 2;
+}
 
-/** Game version folders (_forever_, _retail_...) inside the WoW folder, Forever first. */
-export const gameFolders = (wowDir: string) =>
-  ls(wowDir).filter(isGameFolder).sort((a, b) => Number(/forever/i.test(b)) - Number(/forever/i.test(a)) || a.localeCompare(b));
+/** Game version folders (_forever_, _retail_...) inside the WoW folder: live Forever first, betas and PTRs last. */
+export const gameFolders = (wowDir: string) => ls(wowDir).filter(isGameFolder).sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
 
 /** People often pick the game folder itself; step up to the WoW folder. */
 export const normalizeWowDir = (dir: string) => (isGameFolder(basename(dir)) ? dirname(dir) : dir);
@@ -105,6 +110,7 @@ export async function upload(link: { url: string; token: string }, exports: stri
   if (res.status === 401) return { status: "expired", message: "This link was replaced by a newer /sync link" };
   if (res.status === 429) return { status: "throttled", message: "" }; // two accounts of one player uploading back to back
   if (!res.ok) return { status: "retry", message: `The bot answered ${res.status}${body.error ? `: ${body.error}` : ""}` };
+  if (!Array.isArray(body.results)) return { status: "retry", message: "The bot's address answered, but not like the bot" };
   return { status: "ok", results: (body.results ?? []).map((r: any) => ({ ok: !!r.ok, name: r.name, message: String(r.message ?? "").replace(/\*\*/g, "") })) };
 }
 
@@ -135,15 +141,23 @@ async function api(link: { url: string; token: string }, method: string, path: s
   return json;
 }
 
-export const fetchGuild = (link: { url: string; token: string }): Promise<Guild> => api(link, "GET", "/guild");
+export async function fetchGuild(link: { url: string; token: string }): Promise<Guild> {
+  const g = await api(link, "GET", "/guild");
+  if (!Array.isArray(g.chars) || !Array.isArray(g.events) || !Array.isArray(g.progress)) throw new Error("The bot's address answered, but not like the bot");
+  return g;
+}
 export const signup = (link: { url: string; token: string }, event: number, action: string): Promise<{ ok: boolean; message: string }> =>
   api(link, "POST", "/signup", { event, action });
 
 /** GuildData.lua for the addon: upcoming raids with your signup, and who's on which quest. */
 export function guildLua(g: Guild) {
   const str = (s: string) => `"${s.replace(/[\\"]/g, "\\$&").replace(/[\x00-\x1f]/g, " ")}"`;
-  const raids = g.events.map((e) =>
-    `    { title = ${str(e.title)}, t = ${e.startsAt}, going = ${e.going}, size = ${e.size ?? "nil"}${e.mine?.status === "in" || e.mine?.status === "bench" ? `, mine = ${str(e.mine.role ?? e.mine.status)}` : ""} },`);
+  const mine = (e: GuildEvent) => {
+    if (e.mine?.status === "in") return `, mine = ${str(e.mine.role ?? "?")}`;
+    if (e.mine?.status === "bench") return `, mine = ${str(`${e.mine.role ?? "?"} (bench)`)}`;
+    return "";
+  };
+  const raids = g.events.map((e) => `    { title = ${str(e.title)}, t = ${e.startsAt}, going = ${e.going}, size = ${e.size ?? "nil"}${mine(e)} },`);
   const byQuest = new Map<number, string[]>();
   for (const c of g.chars) for (const q of c.quests) byQuest.set(q, [...(byQuest.get(q) ?? []), c.name]);
   const quests = [...byQuest].sort(([a], [b]) => a - b).map(([q, names]) => `    [${q}] = { ${names.map(str).join(", ")} },`);
@@ -169,6 +183,8 @@ export function writeGuildFile(dir: string, g: Guild) {
 /** Wowhead's icon name for an item, e.g. "inv_sword_39". */
 export async function itemIcon(id: number) {
   const res = await fetch(`https://nether.wowhead.com/forever/tooltip/item/${id}`, { signal: AbortSignal.timeout(15_000) });
+  if (res.status === 404) return null; // not in Wowhead's database (yet)
+  if (!res.ok) throw new Error(`Wowhead answered ${res.status}`); // rate limited or down: try again next time
   const body: any = await res.json().catch(() => null);
   return typeof body?.icon === "string" && /^[\w-]+$/.test(body.icon) ? body.icon : null;
 }

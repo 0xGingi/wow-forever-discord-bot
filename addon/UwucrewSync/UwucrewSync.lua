@@ -168,9 +168,11 @@ local function recipes()
       if r and r.learned and r.name then names[#names + 1] = r.name end
     end
   elseif GetTradeSkillLine and GetNumTradeSkills and GetTradeSkillInfo then -- classic-style
+    if IsTradeSkillLinked and IsTradeSkillLinked() then return nil end -- someone else's
     prof = GetTradeSkillLine()
     for i = 1, GetNumTradeSkills() do
-      local name, kind = GetTradeSkillInfo(i)
+      local name, kind, _, expanded = GetTradeSkillInfo(i)
+      if kind == "header" and not expanded then return nil end -- a collapsed header hides recipes; keep the last full list
       if name and kind ~= "header" and kind ~= "subheader" then names[#names + 1] = name end
     end
   end
@@ -337,7 +339,7 @@ end
 
 local function raidLine(r)
   local when = date("%a %b %d, %I:%M %p", r.t)
-  local status = r.mine and ("you're in as |cffffd100" .. r.mine .. "|r") or "|cff9d9d9dnot signed up|r"
+  local status = r.mine and ("signed up as |cffffd100" .. r.mine .. "|r") or "|cff9d9d9dnot signed up|r"
   return ("|cffffd100%s|r %s · %d/%s · %s"):format(r.title or "Raid", when, r.going or 0, r.size or "?", status)
 end
 
@@ -401,6 +403,9 @@ events:SetScript("OnEvent", function(_, event, ...)
     db.played = db.played or {}
     db.recipes = db.recipes or {}
     db.deaths = db.deaths or {}
+    if not db.live then -- once: these are kept by character name, and beta characters didn't carry over
+      db.exports, db.played, db.recipes, db.deaths, db.live = {}, {}, {}, {}, true
+    end
   elseif event == "PLAYER_LOGIN" then
     if RequestRaidInfo then RequestRaidInfo() end -- fills lockouts, answered by UPDATE_INSTANCE_INFO
     snapshotSoon()
@@ -452,7 +457,7 @@ SlashCmdList.UWUCREW = function(msg)
     if not rest:match("^uwusync%-[%w_%-]+$") then return say("paste the code from |cffffd100/sync link|r in Discord: |cffffd100/uwu link uwusync-...|r") end
     db.link = rest
     snapshot()
-    say("linked! Every character on this WoW account now syncs to your Discord. Type |cffffd100/reload|r once to save it, and keep the uwucrew-sync app running.")
+    say("linked! Every character on this WoW account now syncs to your Discord. Type |cffffd100/reload|r once to save it, and keep the uwucrew Sync app running.")
   elseif cmd == "unlink" then
     db.link = nil
     say("unlinked. |cffffd100/reload|r to save.")
