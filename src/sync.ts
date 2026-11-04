@@ -9,6 +9,7 @@ import { announce, deathEmbed, firstKillEmbed, isFirstTo60, levelUpEmbed, record
 import { fromBeta, PREFIX, type Snapshot } from "./savedvars.ts";
 import { bar, clip, COLOR, e, icon, notice } from "./ui.ts";
 import { appSignup, guildData } from "./guild.ts";
+import { getApp } from "./help.ts";
 
 const PUBLIC_URL = process.env.SYNC_PUBLIC_URL?.replace(/\/$/, "");
 const COMPANION_URL = process.env.COMPANION_URL;
@@ -173,9 +174,9 @@ export function startSyncServer(client: Client, port = Number(process.env.SYNC_P
 
 // ---------- /sync command ----------
 
-export const definition = new SlashCommandBuilder().setName("sync").setDescription("Sync characters from the uwucrew Sync addon")
+export const definition = new SlashCommandBuilder().setName("sync").setDescription("Connect the uwucrew Sync app, or paste a code from the addon")
   .addSubcommand((s) => s.setName("paste").setDescription("Paste the code from /uwu sync in game"))
-  .addSubcommand((s) => s.setName("link").setDescription("Connect your WoW account so all its characters sync automatically"))
+  .addSubcommand((s) => s.setName("link").setDescription("Get the code for the uwucrew Sync app so your characters sync automatically"))
   .addSubcommand((s) => s.setName("unlink").setDescription("Disconnect your WoW account from automatic syncing"));
 
 export async function sync(i: ChatInputCommandInteraction) {
@@ -223,7 +224,7 @@ export function profileEmbed(c: Char) {
     .setColor(CLASSES[c.class as ClassName] ?? COLOR.brand)
     .setThumbnail(icon(c.class));
   if (!row) {
-    return embed.setDescription(`Level ${c.level} ${c.race} ${c.class} · ${e(c.role)} ${c.role}\n\n${e("note")} Not synced yet. Install the uwucrew Sync addon, then \`/uwu sync\` in game and \`/sync paste\` here.`);
+    return embed.setDescription(`Level ${c.level} ${c.race} ${c.class} · ${e(c.role)} ${c.role}\n\n${e("note")} Not synced yet. ${getApp()}`);
   }
   const d = JSON.parse(row.data) as Snapshot;
   const xp = d.level < 60 && d.xpMax ? `\n${bar(d.xp! / d.xpMax, 12)} \`${Math.floor((100 * d.xp!) / d.xpMax)}%\` to ${d.level + 1}` : "";

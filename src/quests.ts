@@ -3,6 +3,7 @@ import { db, getChar, userChars, type Char } from "./db.ts";
 import { CLASSES, type ClassName } from "./game.ts";
 import type { Snapshot } from "./savedvars.ts";
 import { COLOR, e, icon, notice } from "./ui.ts";
+import { getApp } from "./help.ts";
 
 export const definition = new SlashCommandBuilder().setName("quests").setDescription("Quests a character is on right now (synced from the game)")
   .addStringOption((o) => o.setName("name").setDescription("Character (defaults to your main)").setAutocomplete(true));
@@ -31,7 +32,7 @@ export function questsEmbed(c: Char) {
     .setAuthor({ name: `${c.name}'s quest log`, iconURL: icon(c.class) ?? undefined })
     .setColor(CLASSES[c.class as ClassName] ?? COLOR.brand);
   const d = snapshotOf(c);
-  if (!d) return embed.setDescription(`${e("note")} Not synced yet. Install the uwucrew Sync addon, then \`/uwu sync\` in game and \`/sync paste\` here.`);
+  if (!d) return embed.setDescription(`${e("note")} Not synced yet. ${getApp()}`);
   if (!d.log) return embed.setDescription(`${e("note")} This sync came from an older addon. Update **uwucrew Sync** to share your quest log.`);
   if (!d.log.length) return embed.setDescription(`${e("scroll")} Quest log is empty.`).setTimestamp(d.t * 1000);
 
@@ -86,6 +87,6 @@ export function questsEmbed(c: Char) {
 export async function quests(i: ChatInputCommandInteraction) {
   const name = i.options.getString("name");
   const c = name ? getChar(name) : userChars(i.user.id)[0];
-  if (!c) return i.reply(notice("err", name ? "No character with that name. Pick one from the list." : "You don't have any characters yet. Link the uwucrew Sync addon with `/sync link`."));
+  if (!c) return i.reply(notice("err", name ? "No character with that name. Pick one from the list." : `You don't have any characters yet. ${getApp()}`));
   return i.reply({ embeds: [questsEmbed(c)] });
 }

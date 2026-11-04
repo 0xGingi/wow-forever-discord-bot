@@ -9,7 +9,7 @@ import { fmtTime, parseWhen, whenChoices, ZONES, zoneChoices } from "./time.ts";
 import { syncGroup } from "./groups.ts";
 import { formatCharName, CLASSES, DUNGEONS, findInstance, instanceLabel, LAUNCH, PROFESSIONS, RACES, RAIDS, RAIDS_OPEN, ROLES, type ClassName, type Role } from "./game.ts";
 import { bar, clip, COLOR, dm, e, emojiId, icon, notice } from "./ui.ts";
-import { cmd, definition as helpDefinition, help } from "./help.ts";
+import { app, cmd, definition as helpDefinition, getApp, help } from "./help.ts";
 import { announce, isFirstTo60, levelUpEmbed, progressEmbed, PROGRESS_CHANNEL_ID } from "./progress.ts";
 import { crafterIndex } from "./guild.ts";
 import { profileEmbed, sync, definition as syncDefinition } from "./sync.ts";
@@ -33,7 +33,7 @@ const charName = (o: any, desc = "Character name") => o.setName("name").setDescr
 
 export const definitions = [
   new SlashCommandBuilder().setName("char").setDescription("Manage your characters")
-    .addSubcommand((s) => s.setName("add").setDescription("Register a character")
+    .addSubcommand((s) => s.setName("add").setDescription("Register a character by hand (the uwucrew Sync app does this for you)")
       .addStringOption((o) => o.setName("first_name").setDescription("First name, e.g. Asha").setRequired(true).setMinLength(2).setMaxLength(24))
       .addStringOption((o) => o.setName("last_name").setDescription("Second name, e.g. Brightvale").setRequired(true).setMinLength(2).setMaxLength(24))
       .addStringOption((o) => o.setName("class").setDescription("Class").setRequired(true).addChoices(...choices(Object.keys(CLASSES))))
@@ -43,7 +43,7 @@ export const definitions = [
       .addBooleanOption((o) => o.setName("main").setDescription("Is this your main?")))
     .addSubcommand((s) => s.setName("remove").setDescription("Remove a character").addStringOption((o) => charName(o)))
     .addSubcommand((s) => s.setName("main").setDescription("Set your main character").addStringOption((o) => charName(o)))
-    .addSubcommand((s) => s.setName("prof").setDescription("Set a profession skill (0 removes it)")
+    .addSubcommand((s) => s.setName("prof").setDescription("Set a profession skill by hand, 0 removes it (the app syncs these)")
       .addStringOption((o) => charName(o))
       .addStringOption((o) => o.setName("profession").setDescription("Profession").setRequired(true).addChoices(...choices(PROFESSIONS)))
       .addIntegerOption((o) => o.setName("skill").setDescription("Skill level").setRequired(true).setMinValue(0).setMaxValue(500)))
@@ -52,7 +52,7 @@ export const definitions = [
     .addSubcommand((s) => s.setName("list").setDescription("Show someone's characters")
       .addUserOption((o) => o.setName("user").setDescription("Defaults to you"))),
 
-  new SlashCommandBuilder().setName("ding").setDescription("Announce a level up")
+  new SlashCommandBuilder().setName("ding").setDescription("Announce a level up by hand (the uwucrew Sync app does this for you)")
     .addStringOption((o) => charName(o))
     .addIntegerOption((o) => o.setName("level").setDescription("New level").setRequired(true).setMinValue(1).setMaxValue(60)),
 
@@ -122,7 +122,7 @@ async function char(i: Cmd) {
   if (sub === "list") {
     const user = i.options.getUser("user") ?? i.user;
     const chars = userChars(user.id);
-    if (!chars.length) return i.reply(notice("info", `${user} has no characters yet. Use \`/char add\` to register one.`));
+    if (!chars.length) return i.reply(notice("info", `${user} has no characters yet.`, getApp()));
     const profs = db.query<{ char_id: number; prof: string; skill: number }, []>("select * from profs order by skill desc").all();
     const blocks = chars.map((c) => {
       const p = profs.filter((x) => x.char_id === c.id).map((x) => `${e(x.prof)} ${x.prof} \`${x.skill}\``).join("  ");
@@ -207,7 +207,7 @@ async function leaderboard(i: Cmd) {
     embeds: [new EmbedBuilder()
       .setAuthor({ name: "Race to 60", iconURL: icon("level60") ?? undefined })
       .setColor(COLOR.legendary)
-      .setDescription(lines.join("\n") || "Nobody yet. Register with `/char add`, then `/ding` as you level!")
+      .setDescription(lines.join("\n") || `Nobody yet. ${getApp()}`)
       .setFooter({ text: "Ties go to whoever got there first" })],
   });
 }
@@ -242,7 +242,7 @@ async function crafters(i: Cmd) {
       .setColor(COLOR.rare)
       .setDescription(rows.length
         ? clip(rows.map((r) => `${e(r.class)} **${r.name}** \`${String(r.skill).padStart(3)}\` ${bar(r.skill / 300, 6)} <@${r.user_id}>`), 4000)
-        : `Nobody has ${prof} yet. Add yours with \`/char prof\`.`)],
+        : `Nobody has ${prof} yet. Professions sync from the ${app()} (${cmd("sync link")}).`)],
   });
 }
 
@@ -251,7 +251,7 @@ async function craft(i: Cmd) {
   const index = crafterIndex();
   const exact = index.has(q) ? [q] : [];
   const recipes = exact.length ? exact : [...index.keys()].filter((r) => r.toLowerCase().includes(q.toLowerCase())).sort().slice(0, 8);
-  if (!recipes.length) return i.reply(notice("info", `Nobody has synced a recipe matching **${q}** yet.`, "Recipes sync when someone opens their profession window in game with the uwucrew Sync addon."));
+  if (!recipes.length) return i.reply(notice("info", `Nobody has synced a recipe matching **${q}** yet.`, `Recipes sync from the ${app()} once someone opens their profession window in game.`));
   const embed = new EmbedBuilder().setAuthor({ name: `Who can craft "${q}"`, iconURL: icon("note") ?? undefined }).setColor(COLOR.rare);
   for (const r of recipes) {
     const who = index.get(r)!;
@@ -431,7 +431,7 @@ export async function roleButton(i: ButtonInteraction, which: string) {
   const ok = await (has ? member.roles.remove(role) : member.roles.add(role)).then(() => true, () => false);
   if (!ok) return i.reply(notice("err", `I can't manage ${role}. An admin needs to drag my role above it in Server Settings → Roles.`));
   return i.reply(which === "member"
-    ? notice("ok", `Welcome to **uwucrew**! Register your characters with ${cmd("char add")}, and see ${cmd("help")} for everything else.`)
+    ? notice("ok", `Welcome to **uwucrew**! ${getApp()} See ${cmd("help")} for everything else.`)
     : notice("ok", `${has ? "Removed" : "Added"} ${e(which)} ${role}.`));
 }
 
@@ -540,7 +540,7 @@ export async function applyButton(i: ButtonInteraction, userId: string, action: 
   let note = "";
   if (accepted && MEMBER_ROLE_ID) await member?.roles.add(MEMBER_ROLE_ID).catch((err) => (note = ` (couldn't add role: ${err.message})`));
   await member?.send(dm(accepted
-    ? `${e("tabard")} **Welcome to uwucrew!** Your application was accepted.\nRegister your characters with \`/char add\`.`
+    ? `${e("tabard")} **Welcome to uwucrew!** Your application was accepted.\n${getApp()}`
     : `Thanks for applying to **uwucrew**. Unfortunately we can't take you right now. Good luck out there!`)).catch(() => (note += " (DMs closed)"));
   const embed = EmbedBuilder.from(i.message.embeds[0]!)
     .setColor(accepted ? COLOR.uncommon : COLOR.red)

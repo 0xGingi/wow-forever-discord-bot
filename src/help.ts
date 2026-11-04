@@ -14,6 +14,12 @@ export const cmd = (name: string) => {
   return id ? `</${name}:${id}>` : `\`/${name}\``;
 };
 
+const COMPANION_URL = process.env.COMPANION_URL;
+/** "uwucrew Sync app", linked to the download page when COMPANION_URL is set. */
+export const app = () => (COMPANION_URL ? `[uwucrew Sync app](${COMPANION_URL})` : "uwucrew Sync app");
+/** The one-line pitch every "you have no characters yet" message uses. */
+export const getApp = () => `Get the ${app()} and paste the code from ${cmd("sync link")} into it. Your characters, levels, gear and professions then sync every time you log out.`;
+
 type Topic = { label: string; icon: string; blurb: string; body: () => string };
 
 const TOPICS: Record<string, Topic> = {
@@ -23,7 +29,7 @@ const TOPICS: Record<string, Topic> = {
     blurb: "New here? Start with these four steps",
     body: () => [
       `**1.** ${e("clock")} ${cmd("timezone")} · tell the bot your timezone (search your city or your current time).`,
-      `**2.** ${e("tabard")} ${cmd("char add")} · register your character with first + last name, class, race and role. Or let the uwucrew Sync addon do it (see *Syncing from the game*).`,
+      `**2.** ${e("tabard")} Get the ${app()} and paste the code from ${cmd("sync link")} into it. It installs the addon and registers your characters for you, then keeps levels, gear and professions up to date every time you log out.`,
       `**3.** ${e("raid")} Click **Tank / Healer / DPS** on any raid post to sign up.`,
       `**4.** ${e("lfg")} ${cmd("lfg")} · find a group for any dungeon.`,
       "",
@@ -35,13 +41,14 @@ const TOPICS: Record<string, Topic> = {
     icon: "tabard",
     blurb: "Register alts, professions, level-ups",
     body: () => [
-      `${cmd("char add")} Register a character. Your first one becomes your main, and signups use your main's name.`,
+      `With the ${app()}, your characters register themselves and level-ups are announced automatically. Your first one becomes your main, and signups use your main's name.`,
+      "",
       `${cmd("char main")} Switch which character is your main.`,
-      `${cmd("char prof")} Set a profession and skill (\`0\` removes it).`,
       `${cmd("char list")} See your characters, or someone else's.`,
       `${cmd("char remove")} Delete a character.`,
+      `*No app? ${cmd("char add")} registers one by hand, ${cmd("char prof")} sets a profession and ${cmd("ding")} announces a level up.*`,
       "",
-      `${e("ding")} ${cmd("ding")} Announce a level up. The first to 60 gets crowned ${e("crown")}`,
+      `${e("crown")} The first to 60 gets crowned.`,
       `${e("level60")} ${cmd("leaderboard")} The race to 60.`,
       `${e("tank")} ${cmd("roster")} Everyone by class and role.`,
       `${e("tailoring")} ${cmd("crafters")} Who can craft what, by skill.`,
@@ -51,13 +58,13 @@ const TOPICS: Record<string, Topic> = {
   sync: {
     label: "Syncing from the game",
     icon: "hearth",
-    blurb: "The uwucrew Sync addon fills in your profile",
+    blurb: "The uwucrew Sync app fills in your profile",
     body: () => [
-      "Install the **uwucrew Sync** addon and your level, gear, professions, gold, lockouts and reputation sync from the game. Level-ups and first raid boss kills get announced automatically, and Hardcore deaths too once Hardcore opens.",
+      "The **uwucrew Sync** app and addon sync your level, gear, professions, gold, lockouts and reputation from the game. Level-ups and first raid boss kills get announced automatically, and Hardcore deaths too once Hardcore opens.",
       "Open your profession window once in game and your recipes sync too, so guildmates can find you with `/craft`.",
       "",
-      `**Quick way:** in game type \`/uwu sync\`, press Ctrl+C, then ${cmd("sync paste")} here and paste.`,
-      `**Automatic way:** get the uwucrew Sync app (it installs and updates the addon for you) and paste the code from ${cmd("sync link")} into it. It syncs every time you log out or \`/reload\`, and shows your characters too.`,
+      `**Recommended:** get the ${app()} and paste the code from ${cmd("sync link")} into it (Settings → Discord link). It installs and updates the addon for you, syncs every time you log out or \`/reload\`, and shows your characters, the guild and raid signups.`,
+      `**No app?** Install the addon yourself, type \`/uwu sync\` in game, press Ctrl+C, then ${cmd("sync paste")} here and paste.`,
       "",
       `${e("tabard")} ${cmd("char view")} shows anyone's full synced profile with gear links.`,
       `${e("scroll")} ${cmd("quests")} shows a quest log (up to 40 quests) with objectives, and who else in the guild is on each quest.`,
