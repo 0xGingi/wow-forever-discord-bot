@@ -110,6 +110,9 @@ export const definitions = [
   new SlashCommandBuilder().setName("timezone").setDescription("Set your timezone so times you type are read correctly")
     .addStringOption((o) => o.setName("zone").setDescription("Search a city or your current time, e.g. 'new york' or '8:15 pm'").setAutocomplete(true)),
   new SlashCommandBuilder().setName("forever").setDescription("WoW Forever dates, dungeons and raids"),
+  new SlashCommandBuilder().setName("roll").setDescription("Roll like in game: /roll, /roll 50 or /roll 10 20")
+    .addIntegerOption((o) => o.setName("max").setDescription("Highest roll (default 100)").setMinValue(1).setMaxValue(1_000_000))
+    .addIntegerOption((o) => o.setName("min").setDescription("Lowest roll (default 1)").setMinValue(0).setMaxValue(1_000_000)),
   helpDefinition,
   syncDefinition,
   questsDefinition,
@@ -464,7 +467,16 @@ async function forever(i: Cmd) {
   });
 }
 
-export const commands: Record<string, (i: Cmd) => Promise<unknown>> = { char, ding, leaderboard, roster, crafters, craft, progress, event, lfg, sr, loot, attendance, apply, rolepanel, timezone, forever, help, sync, quests };
+/** WoW's /roll: 1-100 by default, `/roll N` is 1-N, `/roll A B` is A-B. Swapped bounds are fine, like in game. */
+export const rollRange = (max = 100, min = 1): [number, number] => (min <= max ? [min, max] : [max, min]);
+
+async function roll(i: Cmd) {
+  const [lo, hi] = rollRange(i.options.getInteger("max") ?? undefined, i.options.getInteger("min") ?? undefined);
+  const n = lo + Math.floor(Math.random() * (hi - lo + 1));
+  return i.reply(`${e("loot")} **${displayChar(i)}** rolls **${n}** (${lo}-${hi})`);
+}
+
+export const commands: Record<string, (i: Cmd) => Promise<unknown>> = { char, ding, leaderboard, roster, crafters, craft, progress, event, lfg, sr, loot, attendance, apply, rolepanel, timezone, forever, roll, help, sync, quests };
 
 // ---------- autocomplete ----------
 

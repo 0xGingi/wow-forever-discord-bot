@@ -109,6 +109,7 @@ const TOPICS: Record<string, Topic> = {
       `${e("reserve")} ${cmd("sr reserve")} One soft reserve per person per raid. Reserving again replaces it.`,
       `${e("reserve")} ${cmd("sr list")} See every reserve, with contested items counted.`,
       `${e("loot")} ${cmd("loot history")} Recent loot, or one character's loot.`,
+      `${e("loot")} ${cmd("roll")} Roll 1-100 like in game, or \`/roll 50\` and \`/roll 10 20\` via the max/min options.`,
       "",
       `Officers record drops with ${cmd("loot give")}.`,
     ].join("\n"),
