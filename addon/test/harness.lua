@@ -157,8 +157,12 @@ SlashCmdList.UWUCREW("raids")
 assert(heard("Hyjal Summit.*12/20"), "/uwu raids lists upcoming raids")
 fire("PLAYER_DEAD") -- a Hardcore death
 SlashCmdList.UWUCREW("sync")
+local xpMax, realLevel = UnitXPMax, level
+UnitXPMax, level = function() return 0 end, 1 -- a real logout clears the character before PLAYER_LOGOUT
 fire("PLAYER_LOGOUT")
+UnitXPMax, level = xpMax, realLevel
 local full = UwucrewSyncDB.exports["Asha Brightvale"]
+assert(full:find('"level":30', 1, true), "a logout that already cleared the character keeps the last good snapshot")
 assert(full:find('"recipes":{"Tailoring":["Azure Silk Hood","Bolt of Silk Cloth"]}', 1, true), "the app's upload carries recipes")
 assert(full:find('"b":["Rage Winterchill","Anetheron"]', 1, true), "raid lockouts name the bosses killed")
 assert(full:find('"died":{', 1, true) and full:find('"hc":true', 1, true), "a Hardcore death is recorded")

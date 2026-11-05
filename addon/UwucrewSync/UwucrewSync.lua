@@ -509,7 +509,8 @@ events:SetScript("OnEvent", function(_, event, ...)
     if first and db then db.played[surname and (first .. " " .. surname) or first] = (...) end
     snapshotSoon()
   elseif event == "PLAYER_LOGOUT" then
-    snapshot()
+    -- A real logout (not /reload) has already cleared level, XP, gear and money by now; keep the last good snapshot then.
+    if UnitXPMax("player") > 0 or UnitLevel("player") >= 60 then snapshot() end
   elseif event == "GUILD_ROSTER_UPDATE" then
     refreshMap()
   else
