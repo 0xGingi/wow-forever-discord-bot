@@ -13,10 +13,12 @@ local function frame()
   end })
 end
 
-local shown
+local shown, mapText = nil, {}
 CreateFrame = function(kind)
   local f = frame()
   if kind == "EditBox" then f.SetText = function(_, t) shown = t end end
+  f.GetWidth, f.GetHeight, f.GetFrameLevel = function() return 1000 end, function() return 700 end, function() return 1 end
+  f.CreateFontString = function() local s = frame(); s.SetText = function(_, t) mapText[#mapText + 1] = t end; return s end
   return f
 end
 UIParent, ChatFontNormal, UISpecialFrames, SlashCmdList = {}, {}, {}, {}
@@ -92,6 +94,30 @@ C_QuestLog = {
     return { { text = "Gnoll Paw: 3/8", finished = false }, { text = "Speak with Foreman Thistlenettle", finished = id % 2 == 0 } }
   end,
 }
+-- Guild roster: you, a guildmate in the Wetlands, one offline, one on the mobile app.
+local roster = { { "Asha Brightvale", "Wetlands", true, "me" }, { "Party Member-Realm", "Wetlands", true }, { "Offline Pal", "Wetlands", false }, { "Phone Pal", "Wetlands", true, nil, true } }
+GetNumGuildMembers = function() return #roster end
+GetGuildRosterInfo = function(i)
+  local r = roster[i]
+  return r[1], "Member", 2, 30, "Mage", r[2], "", "", r[3], 0, "MAGE", 0, 0, r[5] or false, false, 0, r[4] or ("guid" .. i)
+end
+UnitGUID = function() return "me" end
+-- World map: Eastern Kingdoms holds the Wetlands and Elwynn Forest.
+local mapID = 13
+local MAPS = { [13] = { name = "Eastern Kingdoms" }, [56] = { name = "Wetlands" }, [37] = { name = "Elwynn Forest" } }
+C_Map = {
+  GetMapInfo = function(id) return MAPS[id] end,
+  GetMapChildrenInfo = function(id) return id == 13 and { { mapID = 56, name = "Wetlands" }, { mapID = 37, name = "Elwynn Forest" } } or {} end,
+  GetMapRectOnMap = function() return 0.4, 0.6, 0.2, 0.4 end,
+}
+WorldMapFrame = CreateFrame("Frame")
+WorldMapFrame.ScrollContainer, WorldMapFrame.OnMapChanged = CreateFrame("Frame"), function() end
+local canvas = CreateFrame("Frame")
+WorldMapFrame.GetCanvas = function() return canvas end
+WorldMapFrame.GetMapID = function() return mapID end
+WorldMapFrame.IsShown = function() return true end
+WorldMapFrame.HookScript = WorldMapFrame.SetScript
+hooksecurefunc = function(t, k, fn) local orig = t[k]; t[k] = function(...) orig(...); fn(...) end end
 GetSpecialization = function() return 1 end
 GetSpecializationRole = function() return "DAMAGER" end
 
@@ -106,6 +132,14 @@ fire("ADDON_LOADED", "UwucrewSync")
 fire("PLAYER_LOGIN")
 assert(heard("next raid: .*Hyjal Summit.*Healer"), "login shows the next raid from the app's guild info")
 assert(not heard("Old raid"), "raids that already started are skipped")
+WorldMapFrame.scripts.OnShow(WorldMapFrame)
+fire("GUILD_ROSTER_UPDATE")
+local function mapSays(pattern) for _, t in ipairs(mapText) do if t:find(pattern) then return t end end end
+assert(mapSays("1 guildmate|r"), "the continent map counts online guildmates in each zone, not you, offline or mobile ones")
+mapID = 56
+WorldMapFrame:OnMapChanged()
+fire("GUILD_ROSTER_UPDATE")
+assert(mapSays("uwucrew here:|r Party Member$"), "a zone map names who is there")
 fire("TRADE_SKILL_SHOW")
 fire("QUEST_ACCEPTED", 7, 1002)
 assert(heard("also on this quest: .*Party Member"), "accepting a quest names guildmates on it")

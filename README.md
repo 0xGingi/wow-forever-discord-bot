@@ -38,6 +38,8 @@ Click a signup button again to withdraw. Signups use your main character's name.
 
 `addon/UwucrewSync` is a WoW Forever addon (interface `16001`) that records each character's level, XP, class, race, role, guild, gear and item level, professions and known recipes, gold, time played, quests completed, current quest log with objectives, dungeon/raid lockouts (with the raid bosses killed), top reputations, and Hardcore deaths. Paste codes must fit Discord's 4000-character limit, so they shed detail (objectives first) when the log is full; the desktop app always uploads everything.
 
+In game, the world map shows how many guildmates are online in each zone (from the guild roster, so it works without the app), and a zone's map names who's there.
+
 WoW addons can't use the internet, so data reaches the bot one of two ways:
 
 - **Paste:** `/uwu sync` in game shows a code; `/sync paste` in Discord takes it. Works with no setup.
@@ -66,6 +68,7 @@ GitHub Actions builds each part when its code changes, and pushes from `main` up
 | `addon.yml` | `addon/**` | Runs the addon against the fake WoW API, then `UwucrewSync.zip` |
 | `desktop.yml` | `desktop/**`, `src/savedvars.ts`, `assets/emoji/**` | The desktop app: Windows installer, Mac DMGs (Apple Silicon + Intel, signed and notarized) and a Linux AppImage. Each packaged app is launched once on its own OS |
 | `server.yml` | `src/**`, `Dockerfile`, deps | Typecheck + tests, then `ghcr.io/0xgingi/wow-forever-discord-bot` |
+| `pages.yml` | `web/**` | Publishes `web/` to GitHub Pages at [uwucrew.com](https://uwucrew.com) |
 
 Mac builds are signed with a Developer ID certificate and notarized by Apple, which needs these repository secrets: `MAC_CERT_P12` (the certificate as a base64 `.p12`), `MAC_CERT_PASSWORD`, and an App Store Connect API key as `APPLE_API_KEY_P8` (the `.p8` file's contents), `APPLE_API_KEY_ID` and `APPLE_API_ISSUER`. The Mac job fails if the app doesn't pass Gatekeeper.
 

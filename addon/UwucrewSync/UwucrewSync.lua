@@ -352,6 +352,78 @@ local function questmates(id)
   return names
 end
 
+---------------------------------------------------------------- guildmates on the world map
+
+-- Online guildmates by zone, live from the in-game roster (no app needed). Leaves out whoever is playing.
+local function guildZones()
+  local zones, me = {}, UnitGUID and UnitGUID("player")
+  for i = 1, GetNumGuildMembers and GetNumGuildMembers() or 0 do
+    local name, _, _, _, _, zone, _, _, online, _, _, _, _, mobile, _, _, guid = GetGuildRosterInfo(i)
+    name, zone = known(name), known(zone)
+    if name and zone and online and not mobile and guid ~= me then
+      zones[zone] = zones[zone] or {}
+      table.insert(zones[zone], (name:gsub("%-.*", ""))) -- drop "-Realm"
+    end
+  end
+  return zones
+end
+
+local function mapName(mapID) return (C_Map.GetMapInfo(mapID) or {}).name or "" end
+
+-- Guildmates in a map or anywhere inside it (the world map holds continents, continents hold zones).
+local function countIn(mapID, zones)
+  local names = { [mapName(mapID)] = true }
+  for _, c in ipairs(C_Map.GetMapChildrenInfo(mapID, nil, true) or {}) do names[c.name] = true end
+  local n = 0
+  for name in pairs(names) do n = n + #(zones[name] or {}) end
+  return n
+end
+
+local mapLayer, mapHeader, mapLabels
+local function refreshMap()
+  if not (mapLayer and WorldMapFrame:IsShown()) then return end
+  for _, l in ipairs(mapLabels) do l:Hide() end
+  local zones, mapID = guildZones(), WorldMapFrame:GetMapID()
+  if not mapID then return end
+  local canvas, i = WorldMapFrame:GetCanvas(), 0
+  for _, child in ipairs(C_Map.GetMapChildrenInfo(mapID) or {}) do
+    local n = countIn(child.mapID, zones)
+    local minX, maxX, minY, maxY = C_Map.GetMapRectOnMap(child.mapID, mapID)
+    if n > 0 and minX then
+      i = i + 1
+      mapLabels[i] = mapLabels[i] or mapLayer:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+      local l = mapLabels[i]
+      l:ClearAllPoints()
+      l:SetPoint("CENTER", canvas, "TOPLEFT", (minX + maxX) / 2 * canvas:GetWidth(), -(minY + maxY) / 2 * canvas:GetHeight())
+      l:SetText(("|cffff69b4%d %s|r"):format(n, n == 1 and "guildmate" or "guildmates"))
+      l:Show()
+    end
+  end
+  local here = zones[mapName(mapID)]
+  mapHeader:SetText(here and ("|cffff69b4uwucrew here:|r " .. table.concat(here, ", ")) or "")
+end
+
+local function hookMap()
+  if mapLayer or not (WorldMapFrame and WorldMapFrame.GetCanvas and C_Map and C_Map.GetMapChildrenInfo and GetGuildRosterInfo) then return end
+  local canvas = WorldMapFrame:GetCanvas()
+  local function overlay(parent) -- drawn above the map's own pins
+    local f = CreateFrame("Frame", nil, parent)
+    f:SetAllPoints()
+    f:SetFrameLevel(canvas:GetFrameLevel() + 2000)
+    return f
+  end
+  mapLayer, mapLabels = overlay(canvas), {} -- zooms and pans with the map
+  mapHeader = overlay(WorldMapFrame.ScrollContainer or WorldMapFrame):CreateFontString(nil, "OVERLAY", "GameFontNormal")
+  mapHeader:SetPoint("TOP", 0, -10)
+  -- Next frame: the canvas is resized for the new map after this fires.
+  local soon = function() C_Timer.After(0, refreshMap) end
+  hooksecurefunc(WorldMapFrame, "OnMapChanged", soon)
+  WorldMapFrame:HookScript("OnShow", function()
+    if C_GuildInfo and C_GuildInfo.GuildRoster then C_GuildInfo.GuildRoster() elseif GuildRoster then GuildRoster() end -- answered by GUILD_ROSTER_UPDATE
+    soon()
+  end)
+end
+
 ---------------------------------------------------------------- events
 
 local pending = false
@@ -375,7 +447,7 @@ events:RegisterEvent("QUEST_TURNED_IN")
 events:RegisterEvent("PLAYER_LOGOUT")
 events:RegisterEvent("QUEST_ACCEPTED")
 -- Not every client has these; registering an unknown event is an error, so try each one.
-for _, e in ipairs({ "TRADE_SKILL_SHOW", "TRADE_SKILL_UPDATE", "TRADE_SKILL_LIST_UPDATE", "CRAFT_SHOW", "CRAFT_UPDATE", "PLAYER_DEAD" }) do
+for _, e in ipairs({ "TRADE_SKILL_SHOW", "TRADE_SKILL_UPDATE", "TRADE_SKILL_LIST_UPDATE", "CRAFT_SHOW", "CRAFT_UPDATE", "PLAYER_DEAD", "GUILD_ROSTER_UPDATE" }) do
   pcall(events.RegisterEvent, events, e)
 end
 
@@ -396,6 +468,7 @@ end
 
 events:SetScript("OnEvent", function(_, event, ...)
   if event == "ADDON_LOADED" then
+    if ... == "Blizzard_WorldMap" then hookMap() end -- some clients load the map on demand
     if ... ~= ADDON then return end
     UwucrewSyncDB = UwucrewSyncDB or {}
     db = UwucrewSyncDB
@@ -407,6 +480,7 @@ events:SetScript("OnEvent", function(_, event, ...)
       db.exports, db.played, db.recipes, db.deaths, db.live = {}, {}, {}, {}, true
     end
   elseif event == "PLAYER_LOGIN" then
+    hookMap()
     if RequestRaidInfo then RequestRaidInfo() end -- fills lockouts, answered by UPDATE_INSTANCE_INFO
     snapshotSoon()
     C_Timer.After(8, function() -- after the login chat spam
@@ -436,6 +510,8 @@ events:SetScript("OnEvent", function(_, event, ...)
     snapshotSoon()
   elseif event == "PLAYER_LOGOUT" then
     snapshot()
+  elseif event == "GUILD_ROSTER_UPDATE" then
+    refreshMap()
   else
     snapshotSoon()
   end
