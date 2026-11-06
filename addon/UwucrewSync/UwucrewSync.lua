@@ -380,9 +380,19 @@ local function countIn(mapID, zones)
 end
 
 local mapLayer, mapHeader, mapLabels
+local function label(parent, font) -- readable over busy map art: drop shadow and a dark pill behind
+  local s = parent:CreateFontString(nil, "OVERLAY", font)
+  s:SetShadowOffset(1, -1)
+  s.bg = parent:CreateTexture(nil, "BORDER")
+  s.bg:SetColorTexture(0, 0, 0, 0.75)
+  s.bg:SetPoint("TOPLEFT", s, -6, 4)
+  s.bg:SetPoint("BOTTOMRIGHT", s, 6, -4)
+  return s
+end
+local function show(l, on) l:SetShown(on); l.bg:SetShown(on) end
 local function refreshMap()
   if not (mapLayer and WorldMapFrame:IsShown()) then return end
-  for _, l in ipairs(mapLabels) do l:Hide() end
+  for _, l in ipairs(mapLabels) do show(l, false) end
   local zones, mapID = guildZones(), WorldMapFrame:GetMapID()
   if not mapID then return end
   local canvas, i = WorldMapFrame:GetCanvas(), 0
@@ -391,16 +401,17 @@ local function refreshMap()
     local minX, maxX, minY, maxY = C_Map.GetMapRectOnMap(child.mapID, mapID)
     if n > 0 and minX then
       i = i + 1
-      mapLabels[i] = mapLabels[i] or mapLayer:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+      mapLabels[i] = mapLabels[i] or label(mapLayer, "GameFontNormalLarge")
       local l = mapLabels[i]
       l:ClearAllPoints()
       l:SetPoint("CENTER", canvas, "TOPLEFT", (minX + maxX) / 2 * canvas:GetWidth(), -(minY + maxY) / 2 * canvas:GetHeight())
       l:SetText(("|cffff69b4%d %s|r"):format(n, n == 1 and "guildmate" or "guildmates"))
-      l:Show()
+      show(l, true)
     end
   end
   local here = zones[mapName(mapID)]
   mapHeader:SetText(here and ("|cffff69b4uwucrew here:|r " .. table.concat(here, ", ")) or "")
+  show(mapHeader, here ~= nil)
 end
 
 local function hookMap()
@@ -413,8 +424,8 @@ local function hookMap()
     return f
   end
   mapLayer, mapLabels = overlay(canvas), {} -- zooms and pans with the map
-  mapHeader = overlay(WorldMapFrame.ScrollContainer or WorldMapFrame):CreateFontString(nil, "OVERLAY", "GameFontNormal")
-  mapHeader:SetPoint("TOP", 0, -10)
+  mapHeader = label(overlay(WorldMapFrame.ScrollContainer or WorldMapFrame), "GameFontNormal")
+  mapHeader:SetPoint("BOTTOM", 0, 14) -- the top is where the map prints the zone name
   -- Next frame: the canvas is resized for the new map after this fires.
   local soon = function() C_Timer.After(0, refreshMap) end
   hooksecurefunc(WorldMapFrame, "OnMapChanged", soon)
