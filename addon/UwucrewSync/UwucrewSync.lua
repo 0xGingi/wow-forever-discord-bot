@@ -176,7 +176,7 @@ local function recipes()
       if name and kind ~= "header" and kind ~= "subheader" then names[#names + 1] = name end
     end
   end
-  if not prof or prof == "UNKNOWN" or #names == 0 then return nil end
+  if not prof or prof == "" or prof == "UNKNOWN" or #names == 0 then return nil end
   table.sort(names)
   return prof, names
 end

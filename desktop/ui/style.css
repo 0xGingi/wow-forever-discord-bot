@@ -126,7 +126,7 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--pink
 .role { display: inline-flex; align-items: center; gap: 6px; margin-left: 10px; color: var(--muted); }
 .role img { width: 18px; height: 18px; border-radius: 4px; }
 .guild { margin-top: 2px; color: var(--muted); }
-.hero-sync { text-align: right; font-size: 13px; color: var(--muted); }
+.hero-sync { max-width: 300px; text-align: right; font-size: 13px; color: var(--muted); }
 .hero-sync.warn { color: var(--warn); }
 
 .xp { position: relative; height: 18px; margin-bottom: 26px; overflow: hidden; background: #0b0a19; border: 1px solid #2d2448; border-radius: 3px; }

@@ -93,6 +93,7 @@ test("rejects junk and tampering with a helpful message", () => {
   expect(parseExport(code(snap({ t: Date.parse("2026-10-20T12:00:00Z") / 1000 })))).toMatchObject({ error: expect.stringContaining("beta character") });
   expect(parseExport(code({ ...snap(), gear: [{ s: 1, id: "x" }] }))).toHaveProperty("error");
   expect(parseExport(code(snap({ level: 1, xp: 0, xpMax: 0 })))).toMatchObject({ error: expect.stringContaining("mid-logout") }); // cleared by logout
+  expect(parseExport(code(snap({ recipes: { "": ["Linen Bandage"], "First Aid": ["Linen Bandage"] } })))).toMatchObject({ snap: { recipes: { "First Aid": ["Linen Bandage"] } } }); // addon 1.3.2 could save an unnamed profession
   expect(parseExport(code(snap()))).toHaveProperty("snap");
 });
 

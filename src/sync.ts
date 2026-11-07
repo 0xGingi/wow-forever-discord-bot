@@ -32,6 +32,7 @@ export function parseExport(text: string): { snap: Snapshot } | { error: string 
   } catch {
     return { error: "That sync code is cut off or damaged. Copy the whole box again with Ctrl+A, Ctrl+C." };
   }
+  if (d?.recipes?.[""]) delete d.recipes[""]; // addons before 1.3.3 could file recipes under an unnamed profession
   const valid =
     d && d.v === 1 && isNum(d.t) && d.t < Date.now() / 1000 + 86400 &&
     isStr(d.first, 24) && isStr(d.last, 24) && isNum(d.level, 1, 60) && isStr(d.class, 20) &&
